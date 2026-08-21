@@ -31,5 +31,7 @@ assert.ok(renderer.includes('id="effectLibrary"') && renderer.includes('id="filt
 assert.ok(renderer.includes('id="effectLane"') && renderer.includes('addEffectClip'), 'Animated effects must be draggable timed clips on a dedicated timeline lane.');
 assert.ok(renderer.includes('Freeze Frame at Playhead') && renderer.includes('freezeFrameAtPlayhead'), 'Video context editing must expose a working freeze-frame action.');
 assert.ok(renderer.includes('TikTok / Reels 9:16') && renderer.includes('id="exportFit"'), 'High-quality vertical export controls must be visible in the app.');
+assert.ok(renderer.includes('id="clipZoom"') && renderer.includes('id="clipPanX"') && renderer.includes('id="clipPanY"'), 'Selected video clips must expose visual zoom and pan framing controls.');
+assert.ok(exporter.includes('videoFramingFilters') && exporter.includes('visual.zoom'), 'Native export must bake visual zoom and pan into the MP4.');
 
 console.log('EMX VISUAL EDITING CONTRACT: PASS');

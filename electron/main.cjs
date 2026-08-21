@@ -9,6 +9,7 @@ const { setupAudioAI, aiStatus, processAudioAI } = require('./audio-ai.cjs');
 const { cliReady } = require('./ai-runtime.cjs');
 const { normalizeWatermark, watermarkAssetPath } = require('./branding.cjs');
 const { EmxUpdateService } = require('./updater.cjs');
+const { defaultExportPath, exportDirectory } = require('./export-paths.cjs');
 
 let mainWindow;
 let updateService;
@@ -179,6 +180,17 @@ app.whenReady().then(()=>{
     return {ok:true};
   });
 
+  ipcMain.handle('emx:open-path',async(_event,filePath)=>{
+    if(typeof filePath!=='string'||!path.isAbsolute(filePath)||!fs.existsSync(filePath)){
+      throw new Error('The requested exported video is no longer available on this PC.');
+    }
+    const media=supportedMediaPath(filePath);
+    if(!media||media.mime!=='video/mp4')throw new Error('Only an exported MP4 can be opened from the export screen.');
+    const error=await shell.openPath(filePath);
+    if(error)throw new Error(error);
+    return {ok:true};
+  });
+
   ipcMain.handle('emx:choose-import-folder',async()=>{
     const result=await dialog.showOpenDialog(mainWindow,{
       title:'Choose EMX Clips Folder',
@@ -241,7 +253,9 @@ app.whenReady().then(()=>{
     if(!payload?.project||typeof payload.project!=='object')throw new Error('A valid export project is required.');
     const bins=binaryPaths();
     const jobId=payload.jobId||crypto.randomUUID();
-    const defaultPath=path.join(app.getPath('videos'),payload.suggestedName||`EMX_Clip_${Date.now()}.mp4`);
+    const outputDirectory=exportDirectory(app.getPath('videos'));
+    fs.mkdirSync(outputDirectory,{recursive:true});
+    const defaultPath=defaultExportPath(app.getPath('videos'),payload.suggestedName);
     const chosen=await dialog.showSaveDialog(mainWindow,{
       title:'Export EMX MP4',
       defaultPath,
@@ -269,7 +283,7 @@ app.whenReady().then(()=>{
       onLog:log=>sendJob(jobId,'log',{log})
     });
     sendJob(jobId,'complete',{message:'MP4 export verified.'});
-    return {ok:true,...result};
+    return {ok:true,...result,outputDirectory:path.dirname(result.outputPath)};
   });
 
 

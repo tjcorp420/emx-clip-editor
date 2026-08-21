@@ -105,6 +105,12 @@ for (const token of [
   'timelineTimeFromClientX',
   'TikTok / Reels 9:16',
   'id="exportFit"'
+  ,'id="clipZoom"'
+  ,'id="clipPanX"'
+  ,'id="clipPanY"'
+  ,'id="openExportVideo"'
+  ,'id="openExportFolder"'
+  ,'Fit full clip • no surprise cropping'
 ]) {
   assert.ok(s.includes(token), `V1.11 timeline/effects contract missing ${token}.`);
 }

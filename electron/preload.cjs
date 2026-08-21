@@ -13,6 +13,7 @@ contextBridge.exposeInMainWorld('emxDesktop',{
   importFolderMedia(folderPath){ return ipcRenderer.invoke('emx:import-folder-media',folderPath); },
   releaseMediaToken(mediaToken){ return ipcRenderer.invoke('emx:release-media-token',mediaToken); },
   revealInExplorer(filePath){ return ipcRenderer.invoke('emx:reveal-in-explorer',filePath); },
+  openPath(filePath){ return ipcRenderer.invoke('emx:open-path',filePath); },
   extractAudio(payload){ return ipcRenderer.invoke('emx:extract-audio',payload); },
   exportProject(payload){ return ipcRenderer.invoke('emx:export-project',payload); },
   healthCheck(){ return ipcRenderer.invoke('emx:health-check'); },

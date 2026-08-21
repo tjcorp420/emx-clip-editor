@@ -11,12 +11,12 @@ const app=document.querySelector('#app');
 const state={
   media:[],videoClips:[],audioClips:[],overlayClips:[],effectClips:[],selectedMediaId:null,selectedClipId:null,
   selectedMediaIds:new Set(),selectedClipIds:new Set(),mediaSelectionAnchorId:null,clipSelectionAnchorId:null,
-  playhead:0,pxPerSec:10,isPlaying:false,timelinePlaying:false,fitTimeline:true,timelinePreview:true,timelineTimer:null,activeTimelineClipId:null,previewRequestId:0,previewMuted:false,scrubbing:false,scrubPreviewTimer:null,renderBusy:false,renderStartedAt:0,
+  playhead:0,pxPerSec:10,isPlaying:false,timelinePlaying:false,fitTimeline:true,timelinePreview:true,timelineTimer:null,activeTimelineClipId:null,previewRequestId:0,previewMuted:false,scrubbing:false,scrubPreviewTimer:null,renderBusy:false,renderStartedAt:0,lastExportPath:'',
   history:[],future:[],
   branding:{position:'bottom-right',opacity:.78},
   mediaView:'grid',mediaThumbnailSize:132,
   effects:{brightness:0,contrast:1,saturation:1,blur:0},
-  export:{crf:20,width:1080,height:1920,fps:60,preset:'veryfast',fit:'cover'},
+  export:{crf:20,width:1080,height:1920,fps:60,preset:'veryfast',fit:'contain'},
   settings:{snap:true,previewQuality:'high',defaultVolume:1,autoplayPreview:true,defaultImportFolder:''},
   ffmpegLog:''
 };
@@ -26,7 +26,7 @@ const timelinePlaybackSession=createPlaybackSession();
 app.innerHTML=`
 <div class="app">
 <header class="topbar">
-  <div class="brand"><img class="logo" src="./emx-logo.png" onerror="this.style.display='none'" alt="EMX"><div><h1>EMX CLIP STUDIO</h1><small id="appVersionLabel">Desktop Timeline Editor • V1.11.1</small></div></div>
+  <div class="brand"><img class="logo" src="./emx-logo.png" onerror="this.style.display='none'" alt="EMX"><div><h1>EMX CLIP STUDIO</h1><small id="appVersionLabel">Desktop Timeline Editor • V1.11.2</small></div></div>
   <div class="top-actions">
     <button class="btn undo-last" id="undoLastBtn" disabled>↶ UNDO LAST</button><button class="btn" id="redoBtn" disabled>↷ Redo</button><button class="btn" id="newProject">New</button>
     <button class="btn" id="openFolder">📁 Clips Folder</button>
@@ -113,6 +113,13 @@ app.innerHTML=`
         <div class="field"><label>Volume <span id="volumeVal">100%</span></label><input id="volume" type="range" min="0" max="2" step=".01" value="1"></div>
         <div class="field"><label>Audio Fade In <span id="fadeInVal">0.00s</span></label><input id="fadeIn" type="range" min="0" max="5" step=".05" value="0"></div>
         <div class="field"><label>Audio Fade Out <span id="fadeOutVal">0.00s</span></label><input id="fadeOut" type="range" min="0" max="5" step=".05" value="0"></div>
+      </div>
+      <div class="group" id="videoTransformGroup" hidden><h3>VISUAL FRAMING</h3>
+        <div class="status good" id="videoTransformHint">Zoom changes the picture inside the canvas, not the timeline. Pan selects which part remains visible.</div>
+        <div class="field"><label>Visual Zoom <span id="clipZoomVal">100%</span></label><input id="clipZoom" type="range" min="1" max="3" step=".01" value="1"></div>
+        <div class="field"><label>Pan Left / Right <span id="clipPanXVal">0%</span></label><input id="clipPanX" type="range" min="-1" max="1" step=".01" value="0"></div>
+        <div class="field"><label>Pan Up / Down <span id="clipPanYVal">0%</span></label><input id="clipPanY" type="range" min="-1" max="1" step=".01" value="0"></div>
+        <button class="btn mini" id="resetClipTransform">Reset Framing</button>
       </div>
       <div class="group"><h3>CLIP ACTIONS</h3><div class="actions"><button class="btn mini" id="duplicateClip">Duplicate</button><button class="btn mini danger" id="deleteClip">Delete</button></div></div>
       <div class="group" id="overlayLayoutGroup" hidden><h3>IMAGE OVERLAY LAYOUT</h3>
@@ -223,7 +230,8 @@ app.innerHTML=`
     <div id="insExport" style="display:none">
       <div class="group"><h3>MP4 EXPORT</h3>
         <div class="field"><label>Resolution</label><select id="exportResolution"><option value="1080x1920">TikTok / Reels 9:16 • 1080×1920</option><option value="1920x1080">Landscape 16:9 • 1920×1080</option><option value="1280x720">Landscape 16:9 • 1280×720</option></select></div>
-        <div class="field"><label>Canvas Framing</label><select id="exportFit"><option value="cover">Fill canvas • center crop</option><option value="contain">Fit full clip • letterbox</option></select></div>
+        <div class="field"><label>Canvas Framing</label><select id="exportFit"><option value="contain">Fit full clip • no surprise cropping</option><option value="cover">Fill canvas • center crop</option></select></div>
+        <div class="status">For landscape gameplay on a 9:16 canvas, Fit Full Clip preserves the complete frame with bars. Fill Canvas enlarges and crops the sides. Per-clip Visual Zoom and Pan remain available in the Clip tab.</div>
         <div class="field"><label>Frame Rate</label><select id="exportFps"><option value="60">60 FPS</option><option value="30">30 FPS</option></select></div>
         <div class="field"><label>Quality CRF <span id="crfVal">20</span></label><input id="crf" type="range" min="18" max="32" step="1" value="20"></div>
         <div id="exportEngineStatus" class="status good">Desktop export uses native FFmpeg + FFprobe with output verification.</div>
@@ -282,12 +290,13 @@ app.innerHTML=`
 </div>
 
 <div class="modal-backdrop" id="renderModal">
-  <div class="modal render-modal" id="renderModalCard">
+  <div class="modal render-modal" id="renderModalCard" role="dialog" aria-modal="true" aria-labelledby="renderTitle">
+    <div class="render-ambient" aria-hidden="true"><span></span><span></span><span></span></div>
     <div class="render-head">
-      <div class="render-spinner" id="renderSpinner"></div>
-      <div class="render-head-copy"><h2 id="renderTitle">EMX Render Engine</h2><p id="renderStatus">Preparing...</p></div>
-      <div class="render-percent" id="renderPercent">0%</div>
+      <div class="render-emblem"><div class="render-spinner" id="renderSpinner"></div><span id="renderCompleteIcon">✓</span></div>
+      <div class="render-head-copy"><div class="render-kicker">EMX NATIVE VIDEO ENGINE</div><h2 id="renderTitle">EMX Render Engine</h2><p id="renderStatus">Preparing...</p></div>
     </div>
+    <div class="render-progress-row"><span>EXPORT PROGRESS</span><strong class="render-percent" id="renderPercent">0%</strong></div>
     <div class="progress render-progress"><div id="renderProgress"></div></div>
     <div class="render-stages" id="renderStages">
       <span data-stage="prepare" class="active">1 PREPARE</span>
@@ -297,7 +306,11 @@ app.innerHTML=`
     </div>
     <div class="render-meta"><span id="renderElapsed">00:00</span><span id="renderHint">Keep EMX Clip Studio open while this finishes.</span></div>
     <div class="status render-log" id="renderLog"></div>
-    <div class="actions"><button class="btn" id="closeRender">Close</button></div>
+    <div class="render-result" id="renderResult" hidden>
+      <div class="render-result-icon">✓</div>
+      <div class="render-result-copy"><b id="renderOutputName">Export complete</b><span id="renderOutputPath"></span><small id="renderOutputMeta"></small></div>
+    </div>
+    <div class="actions render-actions"><button class="btn primary" id="openExportVideo" hidden>▶ Play Export</button><button class="btn" id="openExportFolder" hidden>▣ Open Export Folder</button><button class="btn" id="closeRender">Close</button></div>
   </div>
 </div>
 <div class="modal-backdrop" id="folderModeModal" role="dialog" aria-modal="true" aria-labelledby="folderModeTitle">
@@ -472,7 +485,10 @@ function normalizeClipVisual(visual={}){
     saturation:bounded(visual.saturation,0,2,defaultClipVisual.saturation),
     blur:bounded(visual.blur,0,10,defaultClipVisual.blur),
     hue:bounded(visual.hue,-180,180,defaultClipVisual.hue),
-    vignette:bounded(visual.vignette,0,1,defaultClipVisual.vignette)
+    vignette:bounded(visual.vignette,0,1,defaultClipVisual.vignette),
+    zoom:bounded(visual.zoom,1,3,defaultClipVisual.zoom),
+    panX:bounded(visual.panX,-1,1,defaultClipVisual.panX),
+    panY:bounded(visual.panY,-1,1,defaultClipVisual.panY)
   };
 }
 function clipVisual(clip){return normalizeClipVisual(clip?.visual)}
@@ -720,19 +736,25 @@ async function selectMedia(id,autoplay=true,selectionOptions={}){
       if(thumbnail&&state.media.find(item=>item.id===m.id)===m){m.thumb=thumbnail;renderMedia()}
     }
   }catch(error){
-    if(state.selectedMediaId===id)notify(`Preview unavailable: ${error?.message||error}`,'error','Media Preview Failed');
+    if(requestId===state.previewRequestId&&!state.timelinePreview&&state.selectedMediaId===id)notify(`Preview unavailable: ${error?.message||error}`,'error','Media Preview Failed');
     return;
   }
   if(requestId!==state.previewRequestId||state.timelinePreview)return;
   if(autoplay&&state.settings.autoplayPreview){
     try{
       await el.play();
+      if(requestId!==state.previewRequestId||state.timelinePreview){
+        if(!state.timelinePlaying)el.pause();
+        return;
+      }
       state.isPlaying=true;
       $('playPause').textContent='⏸';
     }catch(err){
-      state.isPlaying=false;
-      $('playPause').textContent='▶';
-      notify('Clip loaded. Press Play if browser autoplay is blocked.');
+      if(requestId===state.previewRequestId&&!state.timelinePreview){
+        state.isPlaying=false;
+        $('playPause').textContent='▶';
+        notify('Clip loaded. Press Play if browser autoplay is blocked.');
+      }
     }
   }
 }
@@ -815,6 +837,13 @@ function selectClip(id,selectionOptions={}){
   document.querySelectorAll('.clip').forEach(el=>el.classList.toggle('selected',state.selectedClipIds.has(el.dataset.clip)));
   updateInspector();
 }
+function activateTimelinePreviewForClip(clip){
+  if(state.timelinePreview||!clip)return;
+  const clipEnd=clip.start+clipTimelineDuration(clip);
+  const target=state.playhead>=clip.start&&state.playhead<clipEnd?state.playhead:clip.start;
+  stopTimelinePlayback();
+  previewTimelineAt(Math.min(projectEnd(),target),false);
+}
 
 function projectEnd(){
   return Math.max(
@@ -893,6 +922,7 @@ function renderLane(lane,clips,trackType='video'){
       const modifiers=modifierSelection(e);
       selectClip(c.id,modifiers);
       if(modifiers.toggle||modifiers.range)return;
+      activateTimelinePreviewForClip(c);
       const rect=lane.getBoundingClientRect();
       sx=e.clientX;
       dragPointerOffset=(e.clientX-rect.left)/Math.max(1,state.pxPerSec)-c.start;
@@ -1149,6 +1179,8 @@ function updateInspector(){
   reconcileActiveSelections();
   const selected=selectedTimelineClips();
   const c=selected.find(clip=>clip.id===state.selectedClipId)||selected.at(-1)||null;
+  const selectedVideos=selected.filter(clip=>clip.type==='video');
+  const primaryVideo=selectedVideos.find(clip=>clip.id===state.selectedClipId)||selectedVideos.at(-1)||null;
   const multiple=selected.length>1;
   const effectOnly=Boolean(c&&c.type==='effect');
   $('selectionType').textContent=multiple?`${selected.length} CLIPS`:(c?c.type.toUpperCase():(state.selectedMediaId?'MEDIA':'NONE'));
@@ -1159,9 +1191,18 @@ function updateInspector(){
   ['speed','volume','fadeIn','fadeOut'].forEach(id=>$(id).disabled=!c||effectOnly);
   $('overlayLayoutGroup').hidden=!c||c.type!=='overlay'||multiple;
   $('transitionGroup').hidden=!c||c.type!=='video'||multiple;
+  $('videoTransformGroup').hidden=!primaryVideo;
+  ['clipZoom','clipPanX','clipPanY','resetClipTransform'].forEach(id=>$(id).disabled=!primaryVideo);
   ['overlayPosition','overlayOpacity','overlayScale'].forEach(id=>$(id).disabled=!c||c.type!=='overlay'||multiple);
   ['transitionOut','transitionDuration'].forEach(id=>$(id).disabled=!c||c.type!=='video'||multiple);
   updateClipVisualControls();
+  if(primaryVideo){
+    const transform=clipVisual(primaryVideo);
+    $('clipZoom').value=transform.zoom;$('clipZoomVal').textContent=`${Math.round(transform.zoom*100)}%`;
+    $('clipPanX').value=transform.panX;$('clipPanXVal').textContent=`${Math.round(transform.panX*100)}%`;
+    $('clipPanY').value=transform.panY;$('clipPanYVal').textContent=`${Math.round(transform.panY*100)}%`;
+    $('videoTransformHint').textContent=selectedVideos.length>1?`Visual framing will apply to ${selectedVideos.length} selected video clips.`:'Zoom changes the picture inside the canvas, not the timeline. Pan selects which part remains visible.';
+  }
   $('clipHint').style.display=c?'none':'block';
   if(multiple){
     $('clipHint').style.display='block';
@@ -1226,6 +1267,7 @@ function endInspectorHistory(controlId){delete $(controlId).dataset.editing}
   ['volume','Change clip volume'],['fadeIn','Change fade in'],['fadeOut','Change fade out'],
   ['clipBrightness','Adjust clip brightness'],['clipContrast','Adjust clip contrast'],['clipSaturation','Adjust clip saturation'],
   ['clipHue','Adjust clip hue'],['clipBlur','Adjust clip blur'],['clipVignette','Adjust clip vignette'],
+  ['clipZoom','Adjust visual zoom'],['clipPanX','Pan clip horizontally'],['clipPanY','Pan clip vertically'],
   ['overlayOpacity','Change overlay opacity'],['overlayScale','Change overlay scale'],['transitionDuration','Change transition duration']
 ].forEach(([controlId,name])=>{
   $(controlId).addEventListener('pointerdown',()=>beginInspectorHistory({controlId,name}));
@@ -1247,6 +1289,13 @@ function updateSelectedVisuals(mutator){
   renderTimeline();
   if(state.timelinePreview)previewTimelineAt(state.playhead,state.timelinePlaying);
 }
+function updateSelectedVideoTransforms(mutator){
+  const clips=selectedTimelineClips().filter(clip=>clip.type==='video');
+  if(!clips.length)return;
+  clips.forEach(clip=>{clip.visual=clipVisual(clip);mutator(clip.visual,clip)});
+  updateInspector();
+  if(state.timelinePreview)previewTimelineAt(state.playhead,state.timelinePlaying);
+}
 function applyVisualPreset(id,title=visualPresetLabel(id)){
   const preset=visualConfig.presets[id];
   if(!preset)return;
@@ -1265,6 +1314,14 @@ $('clipVisualPreset').onchange=e=>{
   const preset=visualConfig.presets[e.target.value];
   if(!preset)return;
   applyVisualPreset(e.target.value,e.target.selectedOptions[0]?.textContent||'visual preset');
+};
+bindRange('clipZoom',value=>updateSelectedVideoTransforms(visual=>{visual.zoom=value}));
+bindRange('clipPanX',value=>updateSelectedVideoTransforms(visual=>{visual.panX=value}));
+bindRange('clipPanY',value=>updateSelectedVideoTransforms(visual=>{visual.panY=value}));
+$('resetClipTransform').onclick=()=>{
+  if(!selectedTimelineClips().some(clip=>clip.type==='video'))return;
+  pushHistory('Reset visual framing');
+  updateSelectedVideoTransforms(visual=>{visual.zoom=1;visual.panX=0;visual.panY=0});
 };
 ['effectSearch','filterSearch','transitionSearch'].forEach(id=>$(id).addEventListener('input',updateVisualLibraryState));
 updateVisualRange('clipBrightness','brightness',value=>value.toFixed(2));
@@ -1570,12 +1627,19 @@ function previewClipOpacity(c,t){
   return bounded(opacity,0,1,1);
 }
 function previewClipTransform(c,t){
+  const visual=clipVisual(c);
   const style=c.transitionInStyle||'none';
   const duration=bounded(c.transitionIn,0,2,0);
-  if(!duration||!(style==='slide-left'||style==='slide-right'))return 'translateX(0)';
-  const progress=bounded((t-c.start)/duration,0,1,1);
-  const offset=(1-progress)*100;
-  return `translateX(${style==='slide-left'?offset:-offset}%)`;
+  let slide=0;
+  if(duration&&(style==='slide-left'||style==='slide-right')){
+    const progress=bounded((t-c.start)/duration,0,1,1);
+    const offset=(1-progress)*100;
+    slide=style==='slide-left'?offset:-offset;
+  }
+  const travel=Math.max(0,visual.zoom-1)*50;
+  const panX=visual.panX*travel;
+  const panY=visual.panY*travel;
+  return `translateX(${slide}%) translate(${panX.toFixed(3)}%,${panY.toFixed(3)}%) scale(${visual.zoom.toFixed(3)})`;
 }
 function animatedEffectStateAt(t){
   const result={brightness:0,contrast:1,saturation:1,hue:0,blur:0,vignette:0};
@@ -1729,7 +1793,7 @@ async function previewTimelineAt(t,autoplay=false){
   v.volume=Math.max(0,Math.min(1,c.volume??1))*clipGainAt(c,state.playhead)*Math.max(0,Math.min(1,+$('masterVolume').value||1));
   v.muted=state.previewMuted;
   v.style.opacity=String(previewClipOpacity(c,state.playhead));
-  v.style.transform='translateX(0)';
+  v.style.transform=previewClipTransform(c,state.playhead);
 
   if(secondary){
     const secondaryMedia=state.media.find(media=>media.id===secondary.mediaId);
@@ -2231,6 +2295,11 @@ function openRender(status,title='EMX Render Engine'){
   $('renderPercent').textContent='0%';
   $('renderLog').textContent='';
   $('renderSpinner').style.display='block';
+  $('renderCompleteIcon').style.display='none';
+  $('renderResult').hidden=true;
+  $('openExportVideo').hidden=true;
+  $('openExportFolder').hidden=true;
+  $('renderHint').textContent='Keep EMX Clip Studio open while this finishes.';
   $('closeRender').disabled=true;
   setRenderStage('prepare');
   clearInterval(openRender.timer);
@@ -2243,6 +2312,7 @@ function finishRender(ok,message){
   state.renderBusy=false;
   clearInterval(openRender.timer);
   $('renderSpinner').style.display='none';
+  $('renderCompleteIcon').style.display=ok?'grid':'none';
   $('closeRender').disabled=false;
   $('renderModalCard').className=`modal render-modal ${ok?'success':'failure'}`;
   $('renderStatus').textContent=message;
@@ -2264,6 +2334,16 @@ function setRenderStatus(msg){
   else if(m.includes('render')||m.includes('extract')||m.includes('separat')||m.includes('process'))setRenderStage('process');
 }
 $('closeRender').onclick=closeRender;
+$('openExportVideo').onclick=async()=>{
+  if(!state.lastExportPath)return;
+  try{await window.emxDesktop.openPath(state.lastExportPath)}
+  catch(error){notify(String(error?.message||error),'error','Could Not Open Export')}
+};
+$('openExportFolder').onclick=async()=>{
+  if(!state.lastExportPath)return;
+  try{await window.emxDesktop.revealInExplorer(state.lastExportPath)}
+  catch(error){notify(String(error?.message||error),'error','Could Not Open Export Folder')}
+};
 
 async function doExtract(id,{selectAfter=true}={}){
   const m=state.media.find(x=>x.id===id);
@@ -2504,9 +2584,17 @@ $('exportBtn').onclick=async()=>{
       return;
     }
     if(!result?.ok)throw new Error('Native export did not complete.');
+    state.lastExportPath=result.outputPath;
     finishRender(true,'MP4 export verified');
     setTopTask('MP4 EXPORT COMPLETE',1,'done');
     setLog(`Saved: ${result.outputPath}\nSize: ${(result.size/1024/1024).toFixed(1)} MB\nDuration: ${Number(result.duration||0).toFixed(2)}s`);
+    $('renderOutputName').textContent=String(result.outputPath||'').split(/[\\/]/).pop()||'EMX export';
+    $('renderOutputPath').textContent=result.outputPath;
+    $('renderOutputMeta').textContent=`${(result.size/1024/1024).toFixed(1)} MB • ${Number(result.duration||0).toFixed(2)} seconds • verified MP4`;
+    $('renderResult').hidden=false;
+    $('openExportVideo').hidden=false;
+    $('openExportFolder').hidden=false;
+    $('renderHint').textContent='Export complete. Play it now or open its dedicated folder.';
     notify('MP4 exported and verified','success');
   }catch(err){
     finishRender(false,'Export failed');
@@ -2739,11 +2827,11 @@ function renderUpdateState(update){
 }
 async function hydrateUpdateCenter(){
   if(!window.emxDesktop?.available){
-    renderUpdateState({status:'OFFLINE',currentVersion:'1.11.1',channel:'latest',configured:false,message:'Update Center requires the desktop application.',progress:{}});
+    renderUpdateState({status:'OFFLINE',currentVersion:'1.11.2',channel:'latest',configured:false,message:'Update Center requires the desktop application.',progress:{}});
     return;
   }
   try{renderUpdateState(await window.emxDesktop.updateStatus())}
-  catch(error){renderUpdateState({status:'UPDATE FAILED',currentVersion:'1.11.1',channel:'latest',configured:false,message:String(error?.message||error),progress:{}})}
+  catch(error){renderUpdateState({status:'UPDATE FAILED',currentVersion:'1.11.2',channel:'latest',configured:false,message:String(error?.message||error),progress:{}})}
 }
 if(window.emxDesktop?.available&&window.emxDesktop.onUpdateEvent){window.emxDesktop.onUpdateEvent(renderUpdateState)}
 function notifyManualUpdateCheck(update){

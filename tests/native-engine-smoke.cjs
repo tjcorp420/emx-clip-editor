@@ -70,7 +70,7 @@ function rawFrame(bin,input){
 
   const visualProject={
     videoClips:[
-      {name:'c1',path:c1,start:0,trimStart:0,trimEnd:2,speed:1,volume:1,transitionOut:'crossfade',transitionDuration:.5,transitionIn:0,visual:{brightness:.02,contrast:1.1,saturation:1.2,blur:0,hue:4,vignette:.15}},
+      {name:'c1',path:c1,start:0,trimStart:0,trimEnd:2,speed:1,volume:1,transitionOut:'crossfade',transitionDuration:.5,transitionIn:0,visual:{brightness:.02,contrast:1.1,saturation:1.2,blur:0,hue:4,vignette:.15,zoom:1.35,panX:.5,panY:-.25}},
       {name:'c2',path:c2,start:1.5,trimStart:0,trimEnd:2,speed:1,volume:1,transitionIn:.5,visual:{brightness:0,contrast:1,saturation:1,blur:.2,hue:0,vignette:0}}
     ],
     audioClips:[],
@@ -84,6 +84,7 @@ function rawFrame(bin,input){
   };
   const visualGraph=buildExportArgs(visualProject,new Map([[c1,{streams:[{codec_type:'audio'}]}],[c2,{streams:[{codec_type:'audio'}]}]]),visualOutput).filterGraph;
   assert.ok(visualGraph.includes('overlayComp0'),'Visual export graph must contain the timed image overlay compositor.');
+  assert.ok(visualGraph.includes("iw*1.350000")&&visualGraph.includes("1+0.500000")&&visualGraph.includes("1+-0.250000"),'Visual export graph must bake per-clip zoom and pan into the video framing chain.');
   assert.ok(visualGraph.includes('effectComp7')&&visualGraph.includes("between(t,0.250000,2.750000)"),'Visual export graph must contain every timed animated effect compositor.');
   assert.ok(visualGraph.includes('fade=t=in')&&visualGraph.includes('fade=t=out'),'Visual export graph must contain a real alpha cross fade.');
   await exportProject({ffmpegPath:ffmpeg,ffprobePath:ffprobe,outputPath:visualOutput,project:visualProject});

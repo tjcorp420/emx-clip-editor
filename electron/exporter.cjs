@@ -100,8 +100,25 @@ function normalizeClipVisual(visual={}) {
     saturation: clamp(n(visual.saturation, defaults.saturation), 0, 2),
     blur: clamp(n(visual.blur, defaults.blur), 0, 10),
     hue: clamp(n(visual.hue, defaults.hue), -180, 180),
-    vignette: clamp(n(visual.vignette, defaults.vignette), 0, 1)
+    vignette: clamp(n(visual.vignette, defaults.vignette), 0, 1),
+    zoom: clamp(n(visual.zoom, defaults.zoom), 1, 3),
+    panX: clamp(n(visual.panX, defaults.panX), -1, 1),
+    panY: clamp(n(visual.panY, defaults.panY), -1, 1)
   };
+}
+function videoFramingFilters(width,height,fit,visual={}) {
+  const zoom=clamp(n(visual.zoom,1),1,3);
+  const panX=clamp(n(visual.panX,0),-1,1);
+  const panY=clamp(n(visual.panY,0),-1,1);
+  const filters=[`scale=${width}:${height}:force_original_aspect_ratio=${fit==='cover'?'increase':'decrease'}`];
+  if(fit==='contain')filters.push(`pad=${width}:${height}:(ow-iw)/2:(oh-ih)/2:black`);
+  if(zoom>1.000001){
+    filters.push(`scale='trunc(iw*${zoom.toFixed(6)}/2)*2':'trunc(ih*${zoom.toFixed(6)}/2)*2'`);
+  }
+  if(fit==='cover'||zoom>1.000001){
+    filters.push(`crop=${width}:${height}:x='(iw-ow)/2*(1+${panX.toFixed(6)})':y='(ih-oh)/2*(1+${panY.toFixed(6)})'`);
+  }
+  return filters;
 }
 function combinedVisual(projectEffects, clipVisual) {
   const global = projectEffects || {};
@@ -112,7 +129,10 @@ function combinedVisual(projectEffects, clipVisual) {
     saturation: clamp(n(global.saturation, 1) * local.saturation, 0, 3),
     blur: clamp(n(global.blur, 0) + local.blur, 0, 20),
     hue: local.hue,
-    vignette: local.vignette
+    vignette: local.vignette,
+    zoom: local.zoom,
+    panX: local.panX,
+    panY: local.panY
   };
 }
 function incomingTransitionType(c={}) {
@@ -190,7 +210,7 @@ function buildExportArgs(project, probeByPath, outputPath) {
   const audios = [...(project.audioClips||[])].sort((a,b)=>n(a.start)-n(b.start));
   const overlays = [...(project.overlayClips||[])].sort((a,b)=>n(a.start)-n(b.start));
   const effectClips = [...(project.effectClips||[])].sort((a,b)=>n(a.start)-n(b.start));
-  const fit = project.export?.fit==='contain'?'contain':'cover';
+  const fit = project.export?.fit==='cover'?'cover':'contain';
 
   const inputs = [];
   const filters = [`color=c=black:s=${width}x${height}:r=${fps}:d=${dur.toFixed(6)}[base]`];
@@ -222,8 +242,7 @@ function buildExportArgs(project, probeByPath, outputPath) {
       visual.hue!==0 ? `hue=h=${visual.hue}` : null,
       visual.blur>0 ? `gblur=sigma=${visual.blur}` : null,
       visual.vignette>0 ? `vignette=angle=${(1.6-visual.vignette*1.2).toFixed(6)}` : null,
-      `scale=${width}:${height}:force_original_aspect_ratio=${fit==='cover'?'increase':'decrease'}`,
-      fit==='cover'?`crop=${width}:${height}`:`pad=${width}:${height}:(ow-iw)/2:(oh-ih)/2:black`,
+      ...videoFramingFilters(width,height,fit,visual),
       `fps=${fps}`,
       'format=rgba',
       ...videoTransitionFilters(c,outDur),
@@ -406,6 +425,6 @@ async function versionLine(binary) {
 }
 
 module.exports={
-  projectDuration,atempoChain,probe,hasAudio,timedEffectFilter,buildExportArgs,validateProject,
+  projectDuration,atempoChain,probe,hasAudio,timedEffectFilter,videoFramingFilters,buildExportArgs,validateProject,
   exportProject,extractAudio,versionLine,run
 };

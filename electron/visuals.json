@@ -5,7 +5,10 @@
     "saturation": 1,
     "blur": 0,
     "hue": 0,
-    "vignette": 0
+    "vignette": 0,
+    "zoom": 1,
+    "panX": 0,
+    "panY": 0
   },
   "presets": {
     "none": { "brightness": 0, "contrast": 1, "saturation": 1, "blur": 0, "hue": 0, "vignette": 0 },

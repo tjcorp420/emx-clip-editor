@@ -1,6 +1,6 @@
-# EMX Clip Studio 1.11.1
+# EMX Clip Studio 1.11.2
 
-EMX Clip Studio is a Windows Electron timeline editor backed by private FFmpeg/FFprobe binaries. Version 1.11.1 fixes preview ownership when switching from a playing timeline to a Resources clip, preventing frozen previews, competing seeks, and rapid audio ticking. It retains the V1.11 timed-effects, freeze-frame, precise-timeline, and vertical-export milestone.
+EMX Clip Studio is a Windows Electron timeline editor backed by private FFmpeg/FFprobe binaries. Version 1.11.2 completes the two-way Resources/timeline preview handoff, adds per-clip visual zoom and pan, defaults exports to full-frame fitting, saves into a dedicated EMX exports folder, and provides Play Export/Open Export Folder actions in a redesigned completion screen.
 
 ## What is implemented in this build
 
@@ -10,6 +10,10 @@ EMX Clip Studio is a Windows Electron timeline editor backed by private FFmpeg/F
 - A permanent supplied **EMX Clips** PNG watermark. Export always resolves the bundled resource in the main process; the renderer can set only one of nine positions and opacity from **50% to 100%**. The main process enforces the same lower bound.
 - Timeline selection is reconciled after edits and renders. A click is no longer treated as a move; Ctrl/Shift selection supports batch clip deletion, while speed/volume/fades can be applied to the selected clip set.
 - Timeline playback and Resources preview now use an explicit playback-session handoff. Selecting any Resources video/audio/image stops the timeline animation frame loop, pauses every timeline audio player, invalidates in-flight timeline work, and prevents an interrupted preview request from restarting after ownership changes.
+- Clicking a timeline clip after previewing a Resources item explicitly returns preview ownership to the timeline. If the playhead is outside that clip, EMX previews the selected clip from its start.
+- Video clips expose independent **Visual Zoom**, horizontal pan, and vertical pan controls. These change the picture inside the canvas and are baked into native MP4 export without changing timeline zoom.
+- The safe vertical-export default is **Fit Full Clip**, preventing unexpected center-cropping of landscape gameplay. **Fill Canvas** remains available when deliberate 9:16 crop-fill framing is desired.
+- Save dialogs now open in `%USERPROFILE%\Videos\EMX Clip Studio Exports`. The verified completion card can play the MP4 or reveal it in Explorer.
 - Trimmed clips remain draggable to exactly 0:00 using grab-offset-aware timeline math. The green playhead has a larger draggable hit target and continuously scrubs the preview. Right-click opens clip actions without moving the playhead, so **Split at Playhead** uses the position the editor chose.
 - Video right-click actions include a real **Freeze Frame at Playhead** operation. It splits the source, inserts a two-second held frame, moves the continuation, and creates an ordinary movable/trim-capable timeline clip. **Move Clip to Playhead** is also available.
 - A dedicated **OVERLAYS** timeline lane supports imported PNG, JPG/JPEG, WebP, and GIF images as timed visual overlays. Each overlay has editable position, opacity, and scale, and is composited in the preview and FFmpeg MP4 export.
@@ -22,7 +26,7 @@ EMX Clip Studio is a Windows Electron timeline editor backed by private FFmpeg/F
 
 ## Important release boundaries
 
-1. V1.11.1 is currently an **unsigned** Windows build. The Update Center reports that fact; do not describe a release as signed until code-signing has actually been configured and verified.
+1. V1.11.2 is currently an **unsigned** Windows build. The Update Center reports that fact; do not describe a release as signed until code-signing has actually been configured and verified.
 2. A normal local/dev build deliberately reports **Offline** in the Update Center. It does not invent an update URL.
 3. This is not complete CapCut parity. V1.11 delivers a solid timed-effects and short-form export layer, but keyframes, masks, text/captions, auto reframe, tracking, stabilization, templates, project files/autosave, and many effect families remain explicitly tracked in [docs/CAPCUT-PARITY-MATRIX.md](docs/CAPCUT-PARITY-MATRIX.md).
 
@@ -44,6 +48,7 @@ npm run prepare:native
 npm run check:js
 npm run verify:timeline
 npm run verify:playback
+npm run verify:export-paths
 npm run verify:import
 npm run verify:watermark
 npm run verify:update
