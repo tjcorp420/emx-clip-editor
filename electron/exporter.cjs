@@ -182,6 +182,14 @@ function generatedEffectDrawboxes(kind,start,end,phase) {
       return `drawbox=x='${x.toFixed(3)}*iw':y='mod(${offset}+${speed}*t\,ih+24)-12':w=${3+(index%3)}:h=${8+(index%4)*2}:color=${color}:t=fill:enable='${enabled}'`;
     }).join(',');
   }
+  if(kind==='scanline-drift'){
+    return Array.from({length:9},(_,index)=>{
+      const offset=(index*61)%211;
+      const speed=54+(index%4)*17;
+      const color=index%2===0?'black@0.30':'0xB8FFAB@0.16';
+      return `drawbox=x=0:y='mod(${offset}+${speed}*t\\,ih+18)-9':w=iw:h=${4+(index%3)*2}:color=${color}:t=fill:enable='${enabled}'`;
+    }).join(',');
+  }
   if(kind==='sparkle-burst'){
     const filters=[];
     for(let index=0;index<10;index++){
@@ -235,6 +243,48 @@ function timedEffectFilter(c={},width=1920,height=1080) {
       return `scale=w='iw*(1+0.095*(sin(2.7*PI*${phase})+1)/2*between(t,${s},${e}))':h='ih*(1+0.095*(sin(2.7*PI*${phase})+1)/2*between(t,${s},${e}))':eval=frame,crop=${Math.max(2,Math.round(width))}:${Math.max(2,Math.round(height))}`;
     case 'glitch-scan':
       return `hue=h='if(gt(sin(15*PI*${phase})\,0.35)\,42\,-18)':s=1.35:${enabled},noise=alls=9:allf=t+u:${enabled},eq=contrast=1.18:${enabled}`;
+    case 'strobe-hard':
+      return `eq=brightness='0.55*gt(sin(18*PI*${phase})\,0.6)':contrast=1.2:eval=frame:${enabled}`;
+    case 'pulse-white':
+      return `eq=brightness='0.28*(sin(4.4*PI*${phase})+1)/2':saturation='1-0.25*(sin(4.4*PI*${phase})+1)/2':eval=frame:${enabled}`;
+    case 'beat-punch':
+      return `scale=w='iw*(1+0.13*(sin(4*PI*${phase})+1)/2*between(t,${s},${e}))':h='ih*(1+0.13*(sin(4*PI*${phase})+1)/2*between(t,${s},${e}))':eval=frame,crop=${Math.max(2,Math.round(width))}:${Math.max(2,Math.round(height))},eq=brightness='0.06*(sin(4*PI*${phase})+1)/2':eval=frame:${enabled}`;
+    case 'bass-drop':
+      return `scale=w='iw*(1+0.2*(sin(2.2*PI*${phase})+1)/2*between(t,${s},${e}))':h='ih*(1+0.2*(sin(2.2*PI*${phase})+1)/2*between(t,${s},${e}))':eval=frame,crop=${Math.max(2,Math.round(width))}:${Math.max(2,Math.round(height))},eq=brightness='-0.12*(sin(2.2*PI*${phase})+1)/2':contrast=1.15:eval=frame:${enabled}`;
+    case 'chroma-shift':
+      return `hue=h='70*sin(2.4*PI*${phase})':s=1.3:${enabled}`;
+    case 'duotone-wave':
+      return `hue=h='45*sin(1.6*PI*${phase})':s=0.35:${enabled},eq=contrast=1.2:${enabled}`;
+    case 'heat-wave':
+      return `hue=h='14+10*(sin(2.8*PI*${phase})+1)/2':s=1.2:${enabled},eq=brightness='0.04*(sin(2.8*PI*${phase})+1)/2':eval=frame:${enabled}`;
+    case 'ice-wave':
+      return `hue=h='-16-10*(sin(2.8*PI*${phase})+1)/2':s=1.15:${enabled}`;
+    case 'rainbow-cycle':
+      return `hue=h='180*sin(PI*${phase})':s=1.4:${enabled}`;
+    case 'saturation-surge':
+      return `eq=saturation='1+0.8*(sin(2.4*PI*${phase})+1)/2':eval=frame:${enabled}`;
+    case 'contrast-slam':
+      return `eq=contrast='1+0.5*(sin(4.8*PI*${phase})+1)/2':brightness='-0.03*(sin(4.8*PI*${phase})+1)/2':eval=frame:${enabled}`;
+    case 'shake-hard':
+      return `rotate=angle='0.0142*sin(17*PI*${phase})':ow=iw:oh=ih:fillcolor=black:${enabled},scale=${Math.max(2,Math.round(width))}:${Math.max(2,Math.round(height))}`;
+    case 'zoom-bounce':
+      return `scale=w='iw*(1+0.11*abs(sin(3*PI*${phase}))*between(t,${s},${e}))':h='ih*(1+0.11*abs(sin(3*PI*${phase}))*between(t,${s},${e}))':eval=frame,crop=${Math.max(2,Math.round(width))}:${Math.max(2,Math.round(height))}`;
+    case 'drift-pan':
+      return `rotate=angle='0.0105*sin(0.7*PI*${phase})':ow=iw:oh=ih:fillcolor=black:${enabled},scale=${Math.max(2,Math.round(width))}:${Math.max(2,Math.round(height))}`;
+    case 'spin-tease':
+      return `rotate=angle='0.105*sin(0.5*PI*${phase})':ow=iw:oh=ih:fillcolor=black:${enabled},scale=${Math.max(2,Math.round(width))}:${Math.max(2,Math.round(height))}`;
+    case 'vhs-noise':
+      return `noise=alls=14:allf=t+u:${enabled},hue=h='8*sin(6*PI*${phase})':s=1.2:${enabled},eq=contrast=1.1:${enabled}`;
+    case 'static-burst':
+      return `noise=alls=26:allf=t+u:enable='between(t,${s},${e})*gt(sin(7*PI*${phase})\,0.4)',eq=contrast=1.12:${enabled}`;
+    case 'scanline-drift':
+      return `${generatedEffectDrawboxes('scanline-drift',s,e,phase)},eq=contrast=1.08:saturation=1.1:${enabled}`;
+    case 'film-flicker':
+      return `eq=brightness='0.05*sin(14*PI*${phase})':saturation=0.9:contrast=1.1:eval=frame:${enabled},noise=alls=8:allf=t+u:${enabled}`;
+    case 'soft-focus-pulse':
+      return `gblur=sigma=3.4:${enabled},eq=brightness='0.04*(sin(1.8*PI*${phase})+1)/2':saturation=1.1:eval=frame:${enabled}`;
+    case 'edge-glow':
+      return `vignette=angle='PI/(4+1.1*sin(3*PI*${phase}))':eval=frame:${enabled},eq=brightness='0.05*(sin(3*PI*${phase})+1)/2':saturation=1.25:eval=frame:${enabled}`;
     default:
       return '';
   }

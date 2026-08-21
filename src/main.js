@@ -1,7 +1,7 @@
 
 import './style.css';
 import { getStemEngineStatus } from './lib/stems.js';
-import { clipDuration, clipAtTime as timelineClipAtTime, magneticStartForClips, timelineStartFromPointer, trimLeftByDelta, trimRightByDelta, splitClipAtTime } from './lib/timelineMath.js';
+import { clipDuration, clipAtTime as timelineClipAtTime, magneticStartForClips, timelineStartFromPointer, trimLeftByDelta, trimRightByDelta, splitClipAtTime, collectSnapTargets, snapEdge, SNAP_PIXELS } from './lib/timelineMath.js';
 import { reconcileSelection, selectIds } from './lib/selection.js';
 import { normalizeImportInput } from './lib/importInput.js';
 import { createPlaybackSession } from './lib/playbackSession.js';
@@ -15,6 +15,7 @@ const state={
   selectedMediaIds:new Set(),selectedClipIds:new Set(),mediaSelectionAnchorId:null,clipSelectionAnchorId:null,
   playhead:0,pxPerSec:10,isPlaying:false,timelinePlaying:false,fitTimeline:true,timelinePreview:true,timelineTimer:null,activeTimelineClipId:null,previewRequestId:0,previewMuted:false,scrubbing:false,scrubSessionToken:0,scrubPreviewTimer:null,lastTransitionResyncAt:0,lastPrimaryReassertAt:0,renderBusy:false,renderStartedAt:0,lastExportPath:'',
   history:[],future:[],
+  libraryCategory:{effect:'All',filter:'All'},
   branding:{position:'bottom-right',opacity:.78},
   mediaView:'grid',mediaThumbnailSize:132,
   effects:{brightness:0,contrast:1,saturation:1,blur:0},
@@ -305,6 +306,7 @@ app.innerHTML=`
       <div class="track effect-track"><div class="track-label">EFFECTS</div><div class="track-lane" id="effectLane" title="Drag animated effects here and place them at an exact time"></div></div>
       <div class="track"><div class="track-label">AUDIO</div><div class="track-lane" id="audioLane"></div></div>
       <div class="track overlay-track"><div class="track-label">OVERLAYS</div><div class="track-lane" id="overlayLane"></div></div>
+      <div class="snap-guide" id="snapGuide" aria-hidden="true"></div>
       <div class="playhead" id="playhead"></div>
     </div>
   </div>
@@ -354,6 +356,9 @@ app.innerHTML=`
   <button data-action="trim-end">Trim End to Playhead</button>
   <button data-action="freeze">❄ Freeze Frame at Playhead</button>
   <button data-action="move-playhead">↦ Move Clip to Playhead</button>
+  <button data-action="fit-under">⇔ Fit to Clip Underneath</button>
+  <button data-action="snap-prev">⇤ Snap Start to Previous Edge</button>
+  <button data-action="snap-next">⇥ Snap End to Next Edge</button>
   <button data-action="duplicate">Duplicate</button>
   <button data-action="separate">🎵 Separate Audio to Track</button>
   <button data-action="mute">🔇 Mute / Unmute Clip</button>
@@ -927,8 +932,40 @@ function renderRuler(){
   }
 }
 
+/**
+ * Positions an edge locks onto. Effects are synced to what happens in the
+ * video, so effect and overlay edges must grab VIDEO clip boundaries - not just
+ * other clips on their own lane - plus the playhead and the project end.
+ */
+function snapTargetsFor(movingClip){
+  return collectSnapTargets({
+    tracks:[state.videoClips,state.audioClips,state.overlayClips,state.effectClips],
+    extra:[state.playhead,projectEnd()],
+    excludeId:movingClip?.id??null
+  });
+}
+function snapThresholdSec(){return SNAP_PIXELS/Math.max(1,state.pxPerSec)}
+function clipStartOf(c){return Math.max(0,Number(c?.start)||0)}
 function magneticStart(candidate,movingClip,trackClips){
-  return magneticStartForClips(candidate,movingClip,trackClips,state.settings.snap,state.pxPerSec);
+  return magneticStartForClips(candidate,movingClip,trackClips,state.settings.snap,state.pxPerSec,
+    state.settings.snap?[state.playhead,projectEnd(),...snapTargetsFor(movingClip)]:[]);
+}
+/** Draw a guide at the position an edge has locked onto, so the lock is visible. */
+function showSnapGuide(seconds){
+  const guide=$('snapGuide');
+  if(!guide)return;
+  if(seconds===null||seconds===undefined){guide.style.display='none';return}
+  guide.style.display='block';
+  guide.style.left=`${90+Math.max(0,seconds)*state.pxPerSec}px`;
+}
+function hideSnapGuide(){showSnapGuide(null)}
+/**
+ * Snap one moving edge of a clip. `edge` is the timeline position being
+ * dragged; the returned value is where it should sit.
+ */
+function snapClipEdge(edge,movingClip){
+  if(!state.settings.snap)return {value:edge,snappedTo:null};
+  return snapEdge(edge,snapTargetsFor(movingClip),snapThresholdSec());
 }
 
 function effectDefinition(id){return (visualConfig.effectLibrary||[]).find(item=>item.id===id)||null}
@@ -972,14 +1009,19 @@ function renderLane(lane,clips,trackType='video'){
       }
       const rect=lane.getBoundingClientRect();
       let next=timelineStartFromPointer(e.clientX,rect.left,state.pxPerSec,dragPointerOffset);
+      const raw=next;
       next=magneticStart(next,c,clips);
       c.start=Math.max(0,next);
+      // Guide the locked edge - whichever end actually grabbed.
+      const grabbedStart=Math.abs(next-raw)>1e-6;
+      showSnapGuide(grabbedStart?(Math.abs(c.start-raw)<Math.abs(c.start+clipTimelineDuration(c)-(raw+clipTimelineDuration(c)))?c.start:c.start+clipTimelineDuration(c)):null);
       d.style.left=`${c.start*state.pxPerSec}px`;
       if(state.selectedClipIds.has(c.id))updateInspector();
     });
     d.addEventListener('pointerup',e=>{
       if(!d.hasPointerCapture(e.pointerId))return;
       try{d.releasePointerCapture(e.pointerId)}catch{}
+      hideSnapGuide();
       if(dragMoved){
         const arr=clipCollectionForType(trackType);
         arr.sort((a,b)=>a.start-b.start);
@@ -988,7 +1030,7 @@ function renderLane(lane,clips,trackType='video'){
       }
       dragMoved=false;
     });
-    d.addEventListener('pointercancel',()=>{dragMoved=false});
+    d.addEventListener('pointercancel',()=>{dragMoved=false;hideSnapGuide()});
     const leftHandle=d.querySelector('.trim-handle.left');
     const rightHandle=d.querySelector('.trim-handle.right');
 
@@ -1007,14 +1049,21 @@ function renderLane(lane,clips,trackType='video'){
       leftHandle.setPointerCapture(e.pointerId);
       const move=ev=>{
         if(!leftHandle.hasPointerCapture(ev.pointerId))return;
-        const next=trimLeftByDelta(original,(ev.clientX-startX)/state.pxPerSec);
+        let delta=(ev.clientX-startX)/state.pxPerSec;
+        // Lock the dragged START edge onto nearby boundaries so an effect can be
+        // aligned exactly to a cut.
+        const lock=snapClipEdge((Number(original.start)||0)+delta,c);
+        if(lock.snappedTo!==null)delta=lock.snappedTo-(Number(original.start)||0);
+        const next=trimLeftByDelta(original,delta);
         c.trimStart=next.trimStart;c.start=next.start;
+        showSnapGuide(lock.snappedTo);
         updateClipGeometry();updateInspector();
       };
       const up=ev=>{
         try{leftHandle.releasePointerCapture(ev.pointerId)}catch{}
         leftHandle.removeEventListener('pointermove',move);
         leftHandle.removeEventListener('pointerup',up);
+        hideSnapGuide();
         renderTimeline();previewTimelineAt(state.playhead,false);
       };
       leftHandle.addEventListener('pointermove',move);
@@ -1029,14 +1078,21 @@ function renderLane(lane,clips,trackType='video'){
       rightHandle.setPointerCapture(e.pointerId);
       const move=ev=>{
         if(!rightHandle.hasPointerCapture(ev.pointerId))return;
-        const next=trimRightByDelta(original,(ev.clientX-startX)/state.pxPerSec);
+        let delta=(ev.clientX-startX)/state.pxPerSec;
+        // Lock the dragged END edge onto nearby boundaries.
+        const originalEnd=(Number(original.start)||0)+clipTimelineDuration(original);
+        const lock=snapClipEdge(originalEnd+delta,c);
+        if(lock.snappedTo!==null)delta=lock.snappedTo-originalEnd;
+        const next=trimRightByDelta(original,delta);
         c.trimEnd=next.trimEnd;
+        showSnapGuide(lock.snappedTo);
         updateClipGeometry();updateInspector();
       };
       const up=ev=>{
         try{rightHandle.releasePointerCapture(ev.pointerId)}catch{}
         rightHandle.removeEventListener('pointermove',move);
         rightHandle.removeEventListener('pointerup',up);
+        hideSnapGuide();
         renderTimeline();previewTimelineAt(state.playhead,false);
       };
       rightHandle.addEventListener('pointermove',move);
@@ -1104,11 +1160,45 @@ function addEffectClip(effectId,start=state.playhead){
 }
 function renderVisualCardLibrary(containerId,items,query,kind){
   const container=$(containerId);if(!container)return;
-  const visible=groupLibraryItems(items,query);
+  const searched=groupLibraryItems(items,query);
+  const categories=['All',...new Set((items||[]).map(item=>item.category).filter(Boolean))];
+  const active=categories.includes(state.libraryCategory[kind])?state.libraryCategory[kind]:'All';
+  state.libraryCategory[kind]=active;
+  const visible=active==='All'?searched:searched.filter(item=>item.category===active);
   container.replaceChildren();
+
+  // Category chips keep a 30+ item library navigable without endless scrolling.
+  const chips=document.createElement('div');
+  chips.className='library-chips';
+  chips.setAttribute('role','group');
+  chips.setAttribute('aria-label',`${kind} categories`);
+  for(const category of categories){
+    const chip=document.createElement('button');
+    chip.type='button';
+    chip.className=`library-chip${category===active?' active':''}`;
+    chip.textContent=category;
+    chip.setAttribute('aria-pressed',String(category===active));
+    const total=category==='All'?searched.length:searched.filter(item=>item.category===category).length;
+    chip.title=`${total} ${kind}${total===1?'':'s'} in ${category}`;
+    chip.addEventListener('click',()=>{
+      state.libraryCategory[kind]=category;
+      updateVisualLibraryState();
+    });
+    chips.appendChild(chip);
+  }
+  container.appendChild(chips);
+
+  const count=document.createElement('div');
+  count.className='library-count';
+  count.textContent=`${visible.length} of ${(items||[]).length} ${kind}${(items||[]).length===1?'':'s'}${query?` matching "${query}"`:''}`;
+  container.appendChild(count);
+
   if(!visible.length){
     const empty=document.createElement('div');empty.className='status';empty.textContent=`No ${kind} match that search.`;container.appendChild(empty);return;
   }
+  const scroll=document.createElement('div');
+  scroll.className='library-scroll';
+  container.appendChild(scroll);
   const grouped=new Map();
   visible.forEach(item=>{const group=grouped.get(item.category)||[];group.push(item);grouped.set(item.category,group)});
   const selected=selectedVisualClips();
@@ -1142,7 +1232,7 @@ function renderVisualCardLibrary(containerId,items,query,kind){
       button.addEventListener('click',()=>kind==='effect'?addEffectClip(item.id,state.playhead):applyVisualPreset(item.id,item.title));
       grid.appendChild(button);
     });
-    section.appendChild(grid);container.appendChild(section);
+    section.appendChild(grid);scroll.appendChild(section);
   }
 }
 function transitionLabel(id){
@@ -1708,6 +1798,27 @@ function animatedEffectStateAt(t){
       case 'camera-shake': result.shakeX+=1.2*Math.sin(phase*Math.PI*13);result.shakeY+=.9*Math.cos(phase*Math.PI*17);result.rotate+=.35*Math.sin(phase*Math.PI*11);result.zoom=Math.max(result.zoom,1.025);break;
       case 'zoom-pulse': result.zoom*=1+.095*wave(1.35);break;
       case 'glitch-scan': result.hue+=Math.sin(phase*Math.PI*15)>.35?42:-18;result.saturation*=1.35;result.contrast*=1.18;result.shakeX+=.55*Math.sin(phase*Math.PI*23);break;
+      case 'strobe-hard': result.brightness+=Math.sin(phase*Math.PI*18)>.6?.55:0;result.contrast*=1.2; break;
+      case 'pulse-white': result.brightness+=.28*wave(2.2);result.saturation*=1-.25*wave(2.2); break;
+      case 'beat-punch': result.zoom*=1+.13*wave(2);result.brightness+=.06*wave(2); break;
+      case 'bass-drop': result.zoom*=1+.2*wave(1.1);result.brightness-=.12*wave(1.1);result.contrast*=1.15; break;
+      case 'chroma-shift': result.hue+=70*Math.sin(phase*Math.PI*2*1.2);result.saturation*=1.3; break;
+      case 'duotone-wave': result.saturation*=.35;result.hue+=45*Math.sin(phase*Math.PI*2*.8);result.contrast*=1.2; break;
+      case 'heat-wave': result.hue+=14+10*wave(1.4);result.saturation*=1.2;result.brightness+=.04*wave(1.4); break;
+      case 'ice-wave': result.hue-=16+10*wave(1.4);result.saturation*=1.15; break;
+      case 'rainbow-cycle': result.hue+=180*Math.sin(phase*Math.PI*2*.5);result.saturation*=1.4; break;
+      case 'saturation-surge': result.saturation*=1+.8*wave(1.2); break;
+      case 'contrast-slam': result.contrast*=1+.5*wave(2.4);result.brightness-=.03*wave(2.4); break;
+      case 'shake-hard': result.shakeX+=2.6*Math.sin(phase*Math.PI*19);result.shakeY+=2.1*Math.cos(phase*Math.PI*23);result.rotate+=.9*Math.sin(phase*Math.PI*17);result.zoom=Math.max(result.zoom,1.05); break;
+      case 'zoom-bounce': result.zoom*=1+.11*Math.abs(Math.sin(phase*Math.PI*3)); break;
+      case 'drift-pan': result.rotate+=.6*Math.sin(phase*Math.PI*2*.35);result.zoom=Math.max(result.zoom,1.04); break;
+      case 'spin-tease': result.rotate+=6*Math.sin(phase*Math.PI*2*.25);result.zoom=Math.max(result.zoom,1.08); break;
+      case 'vhs-noise': result.saturation*=1.2;result.hue+=8*Math.sin(phase*Math.PI*6);result.contrast*=1.1;result.particles=Math.max(result.particles,.3); break;
+      case 'static-burst': result.particles=Math.max(result.particles,Math.sin(phase*Math.PI*7)>.4?.9:.1);result.contrast*=1.12; break;
+      case 'scanline-drift': result.particles=Math.max(result.particles,.4);result.contrast*=1.08;result.saturation*=1.1; break;
+      case 'film-flicker': result.brightness+=.05*Math.sin(phase*Math.PI*14);result.saturation*=.9;result.contrast*=1.1; break;
+      case 'soft-focus-pulse': result.blur+=4.5*wave(.9);result.brightness+=.04*wave(.9);result.saturation*=1.1; break;
+      case 'edge-glow': result.vignette=Math.max(result.vignette,.2+.4*wave(1.5));result.brightness+=.05*wave(1.5);result.saturation*=1.25; break;
     }
   }
   return result;
@@ -2375,6 +2486,48 @@ $('engineSelfTest').onclick=async()=>{
 
 
 let contextClipId=null;
+/**
+ * Stretch a clip so it covers exactly the video clip beneath it. This is how an
+ * animated effect gets locked to a cut without pixel-hunting a trim handle.
+ */
+function fitClipToVideoUnderneath(c){
+  if(!c)return;
+  const mid=clipStartOf(c)+clipTimelineDuration(c)/2;
+  const target=videoClipAtTime(mid)||videoClipAtTime(clipStartOf(c))||videoClipAtTime(state.playhead);
+  if(!target)return notify('No video clip under this one to fit to.','warn');
+  const span=clipTimelineDuration(target);
+  const maxSpan=Math.max(.1,(Number(c.duration)||span)-(Number(c.trimStart)||0));
+  if(span>maxSpan)return notify('That clip is longer than this source allows.','warn');
+  pushHistory('Fit clip to video underneath');
+  c.start=clipStartOf(target);
+  c.trimEnd=(Number(c.trimStart)||0)+span*Math.max(.25,Math.min(4,Number(c.speed)||1));
+  clipCollectionForType(c.type).sort((a,b)=>a.start-b.start);
+  renderTimeline();updateInspector();previewTimelineAt(state.playhead,false);
+  notify(`Fitted to ${target.name}`,'success');
+}
+/** Move one edge of a clip onto the nearest boundary on either side of it. */
+function snapClipToNeighbourEdge(c,edge){
+  if(!c)return;
+  const targets=snapTargetsFor(c).filter(t=>Number.isFinite(t));
+  if(!targets.length)return notify('No edges to snap to yet.','warn');
+  const start=clipStartOf(c),span=clipTimelineDuration(c);
+  if(edge==='start'){
+    const before=targets.filter(t=>t<start-.01).pop();
+    if(before===undefined)return notify('No earlier edge to snap to.','warn');
+    pushHistory('Snap clip start to edge');
+    c.start=before;
+  }else{
+    const after=targets.find(t=>t>start+span+.01);
+    if(after===undefined)return notify('No later edge to snap to.','warn');
+    const wanted=after-start;
+    const maxSpan=Math.max(.1,(Number(c.duration)||wanted)-(Number(c.trimStart)||0));
+    if(wanted>maxSpan)return notify('This source is not long enough to reach that edge.','warn');
+    pushHistory('Snap clip end to edge');
+    c.trimEnd=(Number(c.trimStart)||0)+wanted*Math.max(.25,Math.min(4,Number(c.speed)||1));
+  }
+  clipCollectionForType(c.type).sort((a,b)=>a.start-b.start);
+  renderTimeline();updateInspector();previewTimelineAt(state.playhead,false);
+}
 function hideClipContext(){$('clipContext').classList.remove('show');contextClipId=null}
 function showClipContext(c,x,y){
   contextClipId=c.id;
@@ -2465,6 +2618,9 @@ $('clipContext').addEventListener('click',async e=>{
     c.start=Math.max(0,state.playhead);clipCollectionForType(c.type).sort((a,b)=>a.start-b.start);
     renderTimeline();updateInspector();previewTimelineAt(state.playhead,false);
   }
+  if(action==='fit-under')fitClipToVideoUnderneath(c);
+  if(action==='snap-prev')snapClipToNeighbourEdge(c,'start');
+  if(action==='snap-next')snapClipToNeighbourEdge(c,'end');
   if(action==='duplicate')$('duplicateClip').click();
   if(action==='delete')deleteSelected();
   if(action==='separate')await separateAudioFromClip(c);

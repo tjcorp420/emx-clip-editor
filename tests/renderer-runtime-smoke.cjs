@@ -58,7 +58,12 @@ function finish(code, message) {
     `Renderer version label ${JSON.stringify(result.version)} must report V${version}`
   );
   assert.equal(result.effectLane, true);
-  assert.equal(result.effectCards, 15);
+  // Track the shipped library rather than a frozen number, so growing the
+  // effect set does not require editing this test.
+  const visualConfig = require('../electron/visuals.json');
+  assert.equal(result.effectCards, visualConfig.effectLibrary.length);
+  assert.ok(visualConfig.effectLibrary.length >= 30, 'the effects library should offer 30+ options');
+  assert.ok(visualConfig.filterLibrary.length >= 30, 'the filters library should offer 30+ options');
   assert.equal(result.effectsDraggable, true);
   assert.equal(result.filtersDisabledWithoutSelection, true);
   assert.equal(result.playheadPointerEvents, 'auto');

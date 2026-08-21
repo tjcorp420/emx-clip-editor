@@ -559,3 +559,116 @@ button:disabled:hover{
   box-shadow:0 0 12px rgba(57,255,20,.30);
 }
 #aiRepairBtn{opacity:.76}
+
+
+/* ===== EMX V1.11.7 — SNAP GUIDE + PROMINENT CLIP EDGES ===== */
+
+/* Shown while a dragged edge is locked onto a boundary. Amber so it reads
+   clearly against the green playhead and the purple clips. */
+.snap-guide{
+  position:absolute;
+  top:24px;bottom:0;
+  width:2px;
+  margin-left:-1px;
+  display:none;
+  z-index:11;
+  pointer-events:none;
+  background:#ffc857;
+  box-shadow:0 0 10px rgba(255,200,87,.85),0 0 22px rgba(255,200,87,.35);
+}
+.snap-guide:before{
+  content:"";
+  position:absolute;top:-6px;left:-4px;
+  width:10px;height:10px;
+  transform:rotate(45deg);
+  background:#ffc857;
+  box-shadow:0 0 10px rgba(255,200,87,.8);
+}
+
+/* Clip boundaries must be readable at a glance when syncing effects to beats,
+   so both edges carry a permanent bright rail instead of only appearing on
+   hover. The rail sits under the trim handle, which stays the grab target. */
+.clip:before,
+.clip:after{
+  content:"";
+  position:absolute;
+  top:0;bottom:0;
+  width:3px;
+  z-index:5;
+  pointer-events:none;
+  background:rgba(255,255,255,.82);
+  box-shadow:0 0 8px rgba(255,255,255,.35);
+}
+.clip:before{left:0;border-radius:9px 0 0 9px}
+.clip:after{right:0;border-radius:0 9px 9px 0}
+.clip.audio:before,.clip.audio:after{
+  background:var(--green);
+  box-shadow:0 0 9px rgba(57,255,20,.55);
+}
+.clip.effect:before,.clip.effect:after{
+  background:#b9ffae;
+  box-shadow:0 0 9px rgba(185,255,174,.6);
+}
+.clip.selected:before,.clip.selected:after{
+  width:4px;
+  background:#fff;
+  box-shadow:0 0 14px rgba(255,255,255,.9);
+}
+/* A clearer seam where two clips butt up against each other. */
+.clip{box-shadow:0 0 13px rgba(176,38,255,.12),inset 0 0 0 1px rgba(0,0,0,.35)}
+
+/* Bigger, more obvious grab targets on the ends. */
+.trim-handle{width:16px;opacity:.9}
+.clip:hover .trim-handle,.clip.selected .trim-handle{opacity:1}
+.trim-handle:hover{
+  box-shadow:0 0 16px rgba(255,255,255,.55);
+  background:linear-gradient(to right,rgba(255,255,255,.6),rgba(255,200,87,.7));
+}
+.trim-handle.right:hover{
+  background:linear-gradient(to left,rgba(255,255,255,.6),rgba(255,200,87,.7));
+}
+
+
+/* ===== EMX V1.11.7 — BROWSABLE EFFECT / FILTER LIBRARIES ===== */
+.library-chips{
+  display:flex;flex-wrap:wrap;gap:5px;
+  margin:0 0 8px;
+  position:sticky;top:0;z-index:3;
+  padding:2px 0 6px;
+  background:linear-gradient(to bottom,var(--panel) 78%,transparent);
+}
+.library-chip{
+  border:1px solid rgba(176,38,255,.32);
+  background:rgba(176,38,255,.08);
+  color:#d9cbe8;
+  font-size:10.5px;font-weight:800;
+  padding:4px 9px;border-radius:999px;
+  cursor:pointer;
+  transition:background .12s,border-color .12s,color .12s;
+}
+.library-chip:hover{background:rgba(176,38,255,.2);border-color:#cf74ff;color:#fff}
+.library-chip.active{
+  background:linear-gradient(135deg,rgba(176,38,255,.85),rgba(103,26,163,.9));
+  border-color:#e0a6ff;color:#fff;
+  box-shadow:0 0 12px rgba(176,38,255,.4);
+}
+.library-chip:focus-visible{outline:2px solid var(--green);outline-offset:2px}
+.library-count{
+  font-size:10px;font-weight:800;letter-spacing:.4px;
+  color:#9b8bb0;text-transform:uppercase;
+  margin:0 0 7px;
+}
+/* Keeps a long library inside the inspector instead of pushing it off-screen. */
+.library-scroll{
+  max-height:340px;
+  overflow-y:auto;
+  overscroll-behavior:contain;
+  padding-right:4px;
+}
+.library-scroll::-webkit-scrollbar{width:9px}
+.library-scroll::-webkit-scrollbar-thumb{
+  background:rgba(176,38,255,.4);border-radius:6px;
+  border:2px solid transparent;background-clip:content-box;
+}
+.library-scroll::-webkit-scrollbar-thumb:hover{background:rgba(176,38,255,.7);background-clip:content-box}
+@media (max-height:860px){.library-scroll{max-height:260px}}
