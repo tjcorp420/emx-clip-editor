@@ -47,6 +47,25 @@ function clipSpeed(clip){
 }
 
 /**
+ * Which side of a clip's trimmed source window an element is sitting on.
+ *
+ * The distinction matters: 'ahead' means the element has played past the end of
+ * this clip and the playhead should carry on to the boundary, while 'behind'
+ * means the element has NOT reached the clip's trimmed range - it was reset, or
+ * a seek has not landed yet - and the playhead must NOT advance, because doing
+ * so plays the very footage the user trimmed away.
+ */
+export function mediaWindowSide(mediaTime,clip,tolerance=.35){
+  const t=Number(mediaTime);
+  if(!Number.isFinite(t)||!clip)return 'behind';
+  const trimStart=Math.max(0,Number(clip.trimStart)||0);
+  const trimEnd=Math.max(trimStart+.01,Number(clip.trimEnd)||trimStart+.01);
+  if(t<trimStart-tolerance)return 'behind';
+  if(t>trimEnd+tolerance)return 'ahead';
+  return 'inside';
+}
+
+/**
  * Map an element's source time back onto the timeline for a given clip.
  * Returns null when the element is not actually positioned inside the clip's
  * trimmed source window, which means it has not finished seeking yet and must
@@ -55,9 +74,9 @@ function clipSpeed(clip){
 export function timelineTimeFromMedia(mediaTime,clip,tolerance=.35){
   const t=Number(mediaTime);
   if(!Number.isFinite(t)||!clip)return null;
+  if(mediaWindowSide(t,clip,tolerance)!=='inside')return null;
   const trimStart=Math.max(0,Number(clip.trimStart)||0);
   const trimEnd=Math.max(trimStart+.01,Number(clip.trimEnd)||trimStart+.01);
-  if(t<trimStart-tolerance||t>trimEnd+tolerance)return null;
   const start=Math.max(0,Number(clip.start)||0);
   const bounded=Math.max(trimStart,Math.min(trimEnd,t));
   return start+(bounded-trimStart)/clipSpeed(clip);
@@ -84,9 +103,13 @@ export function createTimelineClock(){
     get time(){return time},
     get source(){return source},
     /**
-     * Why the last syncToMedia was refused: 'window' when the element sits
-     * outside the clip's trimmed range (it has run past the clip end), or
-     * 'rewind' when the element reset underneath us and must be re-asserted.
+     * Why the last syncToMedia was refused:
+     *   'ahead'  - the element has played past this clip's trimmed end, so the
+     *              playhead should carry on to the clip boundary;
+     *   'behind' - the element has not reached this clip's trimmed range, so a
+     *              seek is outstanding and the playhead must not advance;
+     *   'rewind' - the element reset underneath us mid-clip.
+     * 'behind' and 'rewind' both mean "re-assert the element's position".
      */
     get rejection(){return rejection},
 
@@ -103,7 +126,7 @@ export function createTimelineClock(){
     /** A playing element owns the clock: derive timeline time from it. */
     syncToMedia(mediaTime,clip,wallNow){
       const derived=timelineTimeFromMedia(mediaTime,clip);
-      if(derived===null){rejection='window';return null}
+      if(derived===null){rejection=mediaWindowSide(mediaTime,clip);return null}
       const clipId=clip&&clip.id!==undefined?clip.id:null;
       if(clipId===lastClipId&&source!=='idle'&&derived<time-CLOCK_LIMITS.rewindGuard){
         rejection='rewind';

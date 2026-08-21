@@ -66,10 +66,23 @@ function makeClip(name, source, tone, seconds) {
 
   const consoleErrors = [];
   const window = new BrowserWindow({
-    show: false,
-    width: 1600,
-    height: 950,
-    webPreferences: { contextIsolation: true, nodeIntegration: false, sandbox: true, webSecurity: true }
+    // The window must be shown: Chromium parks requestAnimationFrame in a window
+    // that never composites, which throttled this harness to ~1fps and made it
+    // silently under-test the playback loop it exists to exercise.
+    show: true,
+    width: 1280,
+    height: 800,
+    x: 40,
+    y: 40,
+    focusable: false,
+    skipTaskbar: true,
+    // Chromium throttles requestAnimationFrame to roughly 1fps in a hidden
+    // window. Without this the playback loop barely runs and the harness
+    // silently under-tests the very loop it exists to exercise.
+    webPreferences: {
+      contextIsolation: true, nodeIntegration: false, sandbox: true,
+      webSecurity: true, backgroundThrottling: false
+    }
   });
   window.webContents.on('console-message', event => {
     if (event.level === 'error') consoleErrors.push(event.message);
@@ -123,6 +136,7 @@ function makeClip(name, source, tone, seconds) {
         rej: snap.clockRejection || '-', settled: snap.loadSettled, rs: video.readyState,
         vMed: (snap.mediaId || '').slice(0, 4), cMed: (snap.activeClipMediaId || '').slice(0, 4),
         cStart: snap.activeClipStart,
+        cTrimIn: snap.activeClipTrimStart, cTrimOut: snap.activeClipTrimEnd,
         dur: Number.isFinite(video.duration) ? +video.duration.toFixed(2) : String(video.duration),
         seekEnd: video.seekable.length ? +video.seekable.end(0).toFixed(2) : -1,
         netState: video.networkState,
@@ -269,7 +283,40 @@ function makeClip(name, source, tone, seconds) {
     await clickPlay();
   }, 3500);
 
-  // 5. Fullscreen scrubber -> Play.
+  // 5. Trim clip 1's start, view clip 2, return to the start, then Play.
+  //     Reported: the first clip replayed the footage that was trimmed away, and
+  //     playback restarted at 0 instead of resuming where Play was pressed.
+  await run(`(() => {
+    const clip = document.querySelector('#videoLane .clip');
+    clip.dispatchEvent(new PointerEvent('pointerdown',
+      { bubbles: true, cancelable: true, button: 0, isPrimary: true }));
+    return true;
+  })()`);
+  await sleep(400);
+  await run(`(() => {
+    const t = document.querySelector('#trimIn');
+    t.value = 3;
+    t.dispatchEvent(new Event('input', { bubbles: true }));
+    return t.value;
+  })()`);
+  await sleep(600);
+  const trimmed = await run(`window.__emxPlaybackSnapshot().clips.map(c => c.trimStart)`);
+  assert.ok(trimmed.some(t => t > 2.5), `the trim must actually apply (got ${JSON.stringify(trimmed)})`);
+
+  await record('trimmedClipPlayback', async () => {
+    // View the second clip, then return to the very start.
+    await transport(`(() => {
+      const clips = [...document.querySelectorAll('#videoLane .clip')];
+      const second = clips[clips.length - 1];
+      second.dispatchEvent(new PointerEvent('pointerdown',
+        { bubbles: true, cancelable: true, button: 0, isPrimary: true }));
+      return true;
+    })()`);
+    await sleep(500);
+    await clickPlay();
+  }, 6000);
+
+  // 6. Fullscreen scrubber -> Play.
   await record('fullscreenScrubThenPlay', async () => {
     await scrub('fullscreenScrub', [2.5]);
     await transport(`document.querySelector('#fullscreenPlayPause').click()`);
@@ -302,6 +349,15 @@ function makeClip(name, source, tone, seconds) {
       }
     }
     r.timelineDrops = drops;
+    // A trimmed clip must never show footage from before its trim-in point.
+    r.trimViolations = r.detail.filter(d =>
+      d.settled && !d.paused && Number.isFinite(d.cTrimIn) && d.cTrimIn > 0.5
+      && d.ct < d.cTrimIn - 0.35
+    ).map(d => `ct=${d.ct} < trimIn=${d.cTrimIn} (tl=${d.timeline})`);
+    if (r.trimViolations.length) {
+      console.log(`         trimViolations (${r.trimViolations.length}): ` +
+        r.trimViolations.slice(0, 4).join(' | '));
+    }
     if (drops.length) console.log('         timelineDrops: ' + drops.join(' | '));
     if (drops.length && name === 'scrubThenPlay') {
       const at = r.trace.findIndex((t, i) => i > 0 && t < r.trace[i - 1] - 0.15);
@@ -313,6 +369,8 @@ function makeClip(name, source, tone, seconds) {
   }
 
   for (const [name, r] of Object.entries(results)) {
+    assert.deepEqual(r.trimViolations, [],
+      `${name}: playback showed footage from before the clip's trim-in point`);
     assert.deepEqual(r.timelineDrops, [],
       `${name}: the timeline playhead moved backwards during playback`);
     assert.equal(r.driftSeeks.length, 0,

@@ -19,6 +19,7 @@ import {
   createTimelineClock,
   planSlaveCorrection,
   timelineTimeFromMedia,
+  mediaWindowSide,
   CLOCK_LIMITS
 } from '../src/lib/timelineClock.js';
 import {createPlaybackSession} from '../src/lib/playbackSession.js';
@@ -162,7 +163,37 @@ assert.equal(timelineTimeFromMedia(Number.NaN, clip()), null,
   clock.reset(0, 900);
   clock.syncToMedia(5.9, c, 1000);
   assert.equal(clock.syncToMedia(20, c, 1100), null, 'an element past the clip end is not the clock');
-  assert.equal(clock.rejection, 'window', 'running past the clip end must report a window refusal');
+  assert.equal(clock.rejection, 'ahead', 'running past the clip end must report an ahead refusal');
+}
+
+/* ---------------------------------------------------------------- *
+ * A trimmed clip must never show the footage that was trimmed away.
+ * An element sitting BEFORE the trimmed window has an outstanding seek;
+ * treating that like "the clip finished" advanced the playhead while the
+ * element played exactly the frames the user cut.
+ * ---------------------------------------------------------------- */
+{
+  const trimmed = clip({start: 0, trimStart: 40.22, trimEnd: 46.01});
+  assert.equal(mediaWindowSide(0, trimmed), 'behind',
+    'an element at 0 on a clip trimmed to start at 40.22s is behind its window');
+  assert.equal(mediaWindowSide(43, trimmed), 'inside', 'a position inside the trim is inside');
+  assert.equal(mediaWindowSide(46.9, trimmed), 'ahead', 'a position past trim-out is ahead');
+
+  const clock = createTimelineClock();
+  clock.reset(0, 0);
+  assert.equal(clock.syncToMedia(0, trimmed, 100), null,
+    'an element behind the trimmed window must not drive the clock');
+  assert.equal(clock.rejection, 'behind',
+    'being behind the trimmed window must be reported as behind, not as the clip ending');
+  assert.equal(clock.time, 0, 'the playhead must not advance while a seek is outstanding');
+
+  // Only 'ahead' may carry the playhead onward to the clip boundary.
+  assert.notEqual(clock.rejection, 'ahead',
+    'a behind refusal must never be mistaken for the clip having finished');
+
+  const renderer2 = renderer;
+  assert.ok(/rejection==='rewind'\|\|timelineClock\.rejection==='behind'/.test(renderer2),
+    'the tick must hold and re-assert for a behind element, not advance the wall clock');
 }
 
 /* ---------------------------------------------------------------- *
@@ -313,8 +344,8 @@ need(/if\(audioPending\|\|!ownsPlayback\(\)\)return;/, 'external audio sync must
 // An abandoned load must never be trusted by the next preview request.
 need(/if\(v\.readyState<1\)\{\s*await new Promise/,
   'every preview request must wait for usable metadata, not only the one that started the load');
-need("if(timelineClock.rejection==='rewind')",
-  'the tick must hold and re-assert when the element resets, not accept a backward jump');
+need("timelineClock.rejection==='rewind'||timelineClock.rejection==='behind'",
+  'the tick must hold and re-assert when the element resets or sits behind its trim window');
 
 // 14: recovery is targeted; nothing is rebuilt on the healthy path.
 assert.ok(!renderer.includes('rearmTimelinePreviewAfterScrub'),

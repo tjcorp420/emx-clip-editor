@@ -42,45 +42,40 @@ reports `driftSeeks=0` in every scenario.
 
 ---
 
-## Open: single playhead snap-back after scrub → Play
+## Fixed: trimmed clip played the footage that was trimmed away (V1.11.7)
 
-**Symptom.** After dragging the scrubber and immediately pressing Play, the
-playhead can jump backwards **once**, roughly 1.2s into playback — for example
-from 5.28s to 0.96s. Playback then continues normally from the new position.
+**Symptom.** After trimming a clip's start (dragging the left handle right),
+viewing another clip, then returning to the beginning, the first clip played the
+footage that should have been trimmed off. Pressing Play from a chosen position
+restarted at the beginning instead of resuming there.
 
-This is *not* the repeated-section bug: it happens once, it does not repeat, it
-produces no seek storm, and no audio ticking. It is reproduced reliably by
-`npm run verify:playback-runtime`, scenario `scrubThenPlay`, which currently
-**fails** by design so the defect is not forgotten.
+**Root cause, part one.** `timelineTimeFromMedia()` returned `null` both when
+the element sat *before* the clip's trimmed window and when it had run *past*
+it, and the playback tick treated every such refusal as "the clip finished" and
+advanced the wall clock. For a clip trimmed to start at 40.22s, an element still
+sitting at 0 is *behind* the window - so the playhead ran forward while the
+element played exactly the footage the user had cut. `mediaWindowSide()` now
+reports `behind` / `inside` / `ahead`; only `ahead` may advance time, and
+`behind` holds the clock and re-asserts the element's position promptly.
 
-**What is known.** Instrumented traces through `window.__emxPlaybackSnapshot()`
-show, in the ~0.9s before the jump:
+**Root cause, part two.** `previewTimelineAt()` marked the load "settled"
+immediately after *issuing* a seek. An element still settling a superseded load
+silently discards a seek, so playback began at 0 with state believing it was
+positioned correctly. The seek is now confirmed - waiting on `seeked` and
+re-issuing once - before the load is treated as settled.
 
-```
-tl=5.27 ct=0.676 clk=5.268 src=held settled=true vMed=b268 clipMed=b268
-        clipStart=0 dur=6 seekEnd=6 net=1
-```
+**Status: verified fixed.** `tests/playback-runtime-validation.cjs` scenario
+`trimmedClipPlayback` reproduces the report (trim clip 1's start, view clip 2,
+return to the start, Play) and asserts no frame is shown from before the clip's
+trim-in point. It reported 20 violations before the fix and 0 after.
 
-- Timeline time is frozen at 5.27 and the clock reports `held`.
-- The element is playing from ~0 and climbing smoothly.
-- The element is fully loaded and seekable (`dur=6`, `seekEnd=6`).
-- The element's media matches the active clip's media (`vMed === clipMed`).
-- The load is marked settled.
+---
 
-Then the clock switches to `media` and adopts the element's ~0.96.
+## Harness note: the window must be visible
 
-Ruled out: media identity mismatch, an unsettled load, a non-seekable or
-partially loaded element, a hidden element, and the drift-correction path (the
-throttled re-assert added for this case does not execute, so the tick is not
-entering the branch that owns the clock).
-
-The evidence — timeline time frozen, `clockSource` stale at `held`, the readout
-not updating, and the element playing on unattended — is consistent with the
-animation loop having **exited** (`ownsPlayback()` returning false) rather than
-the clock mis-deriving time, with a later preview request restarting it and
-re-basing onto the element. The next step is to instrument `ownsPlayback()` and
-`stopTimelinePlayback()` call sites to find what invalidates the session about a
-second after Play following a scrub.
-
-**Workaround.** Press Play again, or move the playhead once; playback resumes
-normally.
+Chromium parks `requestAnimationFrame` in a window that never composites.
+The runtime harness originally ran with `show: false`, which throttled the
+playback loop to roughly 1fps and made every scenario silently under-test the
+loop it exists to exercise - a "playhead snap-back" recorded here earlier was
+largely an artifact of that throttling. The harness now shows its window
+(non-focusable, off the taskbar). Do not set `show: false` again.

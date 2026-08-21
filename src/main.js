@@ -1929,7 +1929,28 @@ async function previewTimelineAt(t,autoplay=false){
   $('previewBadge').textContent=`TIMELINE • ${c.name}`;
 
   const sourceT=Math.min(Math.max(c.trimStart,previewSourceTime(c,state.playhead)),Math.max(c.trimStart,c.trimEnd-.01));
-  if(Math.abs((v.currentTime||0)-sourceT)>.12){try{v.currentTime=sourceT}catch{}}
+  if(Math.abs((v.currentTime||0)-sourceT)>.12){
+    try{v.currentTime=sourceT}catch{}
+    // An element that is still settling a load silently discards a seek. Confirm
+    // it landed before declaring the load settled - otherwise playback starts at
+    // 0 and shows exactly the footage the user trimmed away.
+    if(Math.abs((v.currentTime||0)-sourceT)>.12){
+      await new Promise(resolve=>{
+        let done=false;
+        const finish=()=>{
+          if(done)return;
+          done=true;
+          v.removeEventListener('seeked',finish);
+          clearTimeout(timer);
+          resolve();
+        };
+        const timer=setTimeout(finish,400);
+        v.addEventListener('seeked',finish);
+      });
+      if(requestId!==state.previewRequestId)return;
+      if(Math.abs((v.currentTime||0)-sourceT)>.12){try{v.currentTime=sourceT}catch{}}
+    }
+  }
   // This request owns the element and has positioned it, so a later request may
   // trust the load instead of rebuilding it.
   primaryLoadSettled=true;
@@ -2096,23 +2117,28 @@ async function startTimelinePlayback(){
     const primaryOwnsClock=Boolean(clockClip)&&!clockClip.isFreeze&&primaryLoadSettled&&v.dataset.mediaId===clockClip.mediaId&&v.style.display!=='none';
     if(primaryOwnsClock&&!v.paused){
       if(timelineClock.syncToMedia(v.currentTime,clockClip,now)===null){
-        if(timelineClock.rejection==='rewind'){
+        if(timelineClock.rejection==='rewind'||timelineClock.rejection==='behind'){
           // The element reset itself underneath the clock. Hold timeline time
           // and put the element back where the clock says it should be. This is
           // the only place the primary is ever seeked, it runs only when the
           // element has demonstrably reset, and it is throttled so it cannot
           // become a seek storm.
           timelineClock.hold(now);
+          // A 'behind' element is showing footage the user trimmed away, so it
+          // is corrected promptly rather than on the slow slave cooldown.
+          const behind=timelineClock.rejection==='behind';
           const plan=planSlaveCorrection({
             expected:previewSourceTime(clockClip,timelineClock.time),
             actual:v.currentTime,
             now,
-            lastCorrectionAt:state.lastPrimaryReassertAt||-Infinity
+            lastCorrectionAt:state.lastPrimaryReassertAt||-Infinity,
+            cooldownMs:behind?120:CLOCK_LIMITS.slaveCooldownMs
           });
           if(plan.seek){try{v.currentTime=plan.to}catch{}state.lastPrimaryReassertAt=plan.at}
         }else{
-          // The element has run past this clip's end: carry the playhead to the
-          // boundary so the incoming clip can be promoted.
+          // 'ahead': the element has played past this clip's trimmed end, so
+          // carry the playhead to the boundary and let the next clip be
+          // promoted. This is the ONLY refusal that may advance time.
           timelineClock.advanceWall(now);
         }
       }
@@ -2216,6 +2242,8 @@ window.__emxPlaybackSnapshot=()=>({
   mediaId:v.dataset.mediaId||'',
   activeClipMediaId:(state.videoClips.find(c=>c.id===state.activeTimelineClipId)||{}).mediaId||'',
   activeClipStart:(state.videoClips.find(c=>c.id===state.activeTimelineClipId)||{}).start,
+  activeClipTrimStart:(state.videoClips.find(c=>c.id===state.activeTimelineClipId)||{}).trimStart,
+  activeClipTrimEnd:(state.videoClips.find(c=>c.id===state.activeTimelineClipId)||{}).trimEnd,
   currentTime:v.currentTime,
   paused:v.paused,
   readyState:v.readyState,
