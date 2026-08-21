@@ -37,7 +37,14 @@
     { "id": "mono-flicker", "title": "Mono Flicker", "category": "Classic", "detail": "Alternating color and monochrome frames", "swatch": "mono", "duration": 3 },
     { "id": "warm-flicker", "title": "Warm Flicker", "category": "Classic", "detail": "Animated warm exposure shimmer", "swatch": "retro", "duration": 4 },
     { "id": "nightclub", "title": "Nightclub", "category": "Party", "detail": "Fast saturated nightclub color cycling", "swatch": "night", "duration": 4 },
-    { "id": "vignette-pulse", "title": "Vignette Pulse", "category": "Focus", "detail": "Animated edge-darkening focus pulse", "swatch": "cinema", "duration": 3 }
+    { "id": "vignette-pulse", "title": "Vignette Pulse", "category": "Focus", "detail": "Animated edge-darkening focus pulse", "swatch": "cinema", "duration": 3 },
+    { "id": "sparkle-burst", "title": "Sparkle Burst", "category": "Trending", "detail": "Twinkling white sparkle bursts", "swatch": "sparkle", "duration": 3 },
+    { "id": "particle-rain", "title": "Particle Rain", "category": "Trending", "detail": "Falling luminous particle field", "swatch": "particles", "duration": 4 },
+    { "id": "negative-flash", "title": "Negative Flash", "category": "Gaming", "detail": "Rhythmic inverted-color flashes", "swatch": "negative", "duration": 2.5 },
+    { "id": "bw-flash", "title": "B&W Flash", "category": "Classic", "detail": "Beat-synced black-and-white flashes", "swatch": "mono", "duration": 3 },
+    { "id": "camera-shake", "title": "Camera Shake", "category": "Motion", "detail": "Fast handheld impact movement", "swatch": "shake", "duration": 2.5 },
+    { "id": "zoom-pulse", "title": "Zoom Pulse", "category": "Motion", "detail": "Animated push-in and pull-back pulse", "swatch": "zoom", "duration": 3 },
+    { "id": "glitch-scan", "title": "Glitch Scan", "category": "Gaming", "detail": "Flickering digital color distortion", "swatch": "glitch", "duration": 3 }
   ],
   "filterLibrary": [
     { "id": "cream", "title": "Cream", "category": "Featured", "detail": "Warm softened highlights", "swatch": "cream" },

@@ -2,7 +2,7 @@
 
 This is a factual implementation tracker for the V1.11 roadmap, not marketing copy. “Available” means connected to the running Electron app and native export; “planned” is not a release promise. The user-designated benchmark is CapCut's [9:16 TikTok web editor](https://www.capcut.com/editor?scenario=tiktok&scale=9%3A16); because it is a JavaScript application whose surface changes over time, stable capability claims are cross-checked against CapCut's official feature documentation below.
 
-| Workflow area | Status in 1.11.2 timed-effects milestone | Evidence / next integration boundary |
+| Workflow area | Status in 1.11.3 playback/effects milestone | Evidence / next integration boundary |
 | --- | --- | --- |
 | Dense media browser | Available | Resources Media/Audio tabs, search/sort, display modes, thumbnail sizing, context actions, Ctrl/Shift multi-select, and safe batch project removal. |
 | Folder import choice | Available | A selected folder can import all supported direct children now or become the saved default directory for later selective multi-file import. Native Electron descriptors are normalized before browser-only File operations, preserving trusted native export paths. |
@@ -21,7 +21,8 @@ This is a factual implementation tracker for the V1.11 roadmap, not marketing co
 | Clip transform and crop | Partially available | Image overlays expose normalized position/scale/opacity. Vertical export can center-crop or letterbox the whole canvas. Per-clip crop, rotation, subject-aware reframe, and keyframed transform remain planned. |
 | Keyframes | Planned | Requires per-property timeline interpolation. |
 | Text/caption system | Planned | Requires project persistence, typography UI, preview and FFmpeg rendering. |
-| Timed animated effects | Available for eight native effects | Effects are separate from filters. Neon Pulse, Flash Strobe, RGB Wave, Focus Beat, Mono Flicker, Warm Flicker, Nightclub, and Vignette Pulse are draggable EFFECTS-lane clips with move/trim/split/duplicate/delete support. Preview and FFmpeg use the same IDs and time ranges. Body/subject effects, masks, intensity controls, keyframes, and downloadable packs remain planned. |
+| Timed animated effects | Available for 15 native effects | Effects are separate from filters. Sparkle, particle, negative, B&W, shake, zoom, glitch, neon, strobe, RGB, focus, flicker, nightclub, and vignette families are draggable EFFECTS-lane clips with move/trim/split/duplicate/delete support. The lane is directly below VIDEO for visibility, and preview plus FFmpeg use the same IDs and time ranges. Body/subject effects, masks, intensity controls, keyframes, and downloadable packs remain planned. |
+| Scrub, transition, and fullscreen playback | Available | Scrub completion is single-owner and cancellable; Play invalidates delayed seek/audio work and rearms preview media. Structural transition edits stop the old playback loop and transition drift seeks are throttled. Fullscreen exposes Play/Pause, start, time, and scrubbing controls. |
 | Static filters and color adjustment | Available for a curated library | Filters are per-source static color grades; fine controls cover brightness, contrast, saturation, hue, blur, and vignette. Per-channel HSL, curves, LUT import, wheels, and color matching remain planned. |
 | Video transitions | Available for four native transition types | Dissolve, Dip to Black, Slide Left, and Slide Right are applied between adjacent clips. The preview and FFmpeg graph use the same transition data; advanced wipes, 3D transitions, and transition packs remain planned. |
 | Audio gain/fades/speed | Available | Existing timeline/export controls. |

@@ -54,6 +54,8 @@ run(process.execPath, ['--check', 'electron/updater.cjs']);
 run(process.execPath, ['tests/timeline-math-smoke.mjs']);
 run(process.execPath, ['tests/selection-smoke.mjs']);
 run(process.execPath, ['tests/playback-session-smoke.mjs']);
+run(process.execPath, ['tests/scrub-session-smoke.mjs']);
+run(process.execPath, ['tests/effect-render-smoke.cjs']);
 run(process.execPath, ['tests/export-paths-smoke.cjs']);
 run(process.execPath, ['tests/watermark-contract.cjs']);
 run(process.execPath, ['tests/import-workflow-contract.cjs']);

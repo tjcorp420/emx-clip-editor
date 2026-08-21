@@ -41,6 +41,7 @@ function finish(code, message) {
       resolution: document.querySelector('#exportResolution')?.value,
       fit: document.querySelector('#exportFit')?.value,
       clipZoom: Boolean(document.querySelector('#clipZoom')),
+      fullscreenControls: Boolean(document.querySelector('#fullscreenPlayPause') && document.querySelector('#fullscreenScrub')),
       exportActions: Boolean(document.querySelector('#openExportVideo') && document.querySelector('#openExportFolder')),
       exportHeadLayout: renderHeadStyle.display,
       exportTitleWrap: renderTitleStyle.whiteSpace,
@@ -49,15 +50,16 @@ function finish(code, message) {
     };
   })()`);
   window.destroy();
-  assert.match(result.version, /V1\.11\.2/);
+  assert.match(result.version, /V1\.11\.3/);
   assert.equal(result.effectLane, true);
-  assert.equal(result.effectCards, 8);
+  assert.equal(result.effectCards, 15);
   assert.equal(result.effectsDraggable, true);
   assert.equal(result.filtersDisabledWithoutSelection, true);
   assert.equal(result.playheadPointerEvents, 'auto');
   assert.equal(result.resolution, '1080x1920');
   assert.equal(result.fit, 'contain');
   assert.equal(result.clipZoom, true);
+  assert.equal(result.fullscreenControls, true);
   assert.equal(result.exportActions, true);
   assert.equal(result.exportHeadLayout, 'flex');
   assert.equal(result.exportTitleWrap, 'nowrap');

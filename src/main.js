@@ -5,13 +5,14 @@ import { clipDuration, clipAtTime as timelineClipAtTime, magneticStartForClips, 
 import { reconcileSelection, selectIds } from './lib/selection.js';
 import { normalizeImportInput } from './lib/importInput.js';
 import { createPlaybackSession } from './lib/playbackSession.js';
+import { createScrubSession } from './lib/scrubSession.js';
 import visualConfig from '../electron/visuals.json';
 
 const app=document.querySelector('#app');
 const state={
   media:[],videoClips:[],audioClips:[],overlayClips:[],effectClips:[],selectedMediaId:null,selectedClipId:null,
   selectedMediaIds:new Set(),selectedClipIds:new Set(),mediaSelectionAnchorId:null,clipSelectionAnchorId:null,
-  playhead:0,pxPerSec:10,isPlaying:false,timelinePlaying:false,fitTimeline:true,timelinePreview:true,timelineTimer:null,activeTimelineClipId:null,previewRequestId:0,previewMuted:false,scrubbing:false,scrubPreviewTimer:null,renderBusy:false,renderStartedAt:0,lastExportPath:'',
+  playhead:0,pxPerSec:10,isPlaying:false,timelinePlaying:false,fitTimeline:true,timelinePreview:true,timelineTimer:null,activeTimelineClipId:null,previewRequestId:0,previewMuted:false,scrubbing:false,scrubSessionToken:0,scrubPreviewTimer:null,timelinePreviewNeedsRearm:false,lastPrimaryResyncAt:0,lastTransitionResyncAt:0,renderBusy:false,renderStartedAt:0,lastExportPath:'',
   history:[],future:[],
   branding:{position:'bottom-right',opacity:.78},
   mediaView:'grid',mediaThumbnailSize:132,
@@ -22,11 +23,12 @@ const state={
 };
 const uid=()=>crypto.randomUUID?.()||`${Date.now()}_${Math.random().toString(16).slice(2)}`;
 const timelinePlaybackSession=createPlaybackSession();
+const scrubSession=createScrubSession();
 
 app.innerHTML=`
 <div class="app">
 <header class="topbar">
-  <div class="brand"><img class="logo" src="./emx-logo.png" onerror="this.style.display='none'" alt="EMX"><div><h1>EMX CLIP STUDIO</h1><small id="appVersionLabel">Desktop Timeline Editor • V1.11.2</small></div></div>
+  <div class="brand"><img class="logo" src="./emx-logo.png" onerror="this.style.display='none'" alt="EMX"><div><h1>EMX CLIP STUDIO</h1><small id="appVersionLabel">Desktop Timeline Editor • V1.11.3</small></div></div>
   <div class="top-actions">
     <button class="btn undo-last" id="undoLastBtn" disabled>↶ UNDO LAST</button><button class="btn" id="redoBtn" disabled>↷ Redo</button><button class="btn" id="newProject">New</button>
     <button class="btn" id="openFolder">📁 Clips Folder</button>
@@ -64,6 +66,7 @@ app.innerHTML=`
     <audio id="previewAudio" style="display:none"></audio>
     <img id="previewImage" alt="Selected image preview" style="display:none">
     <div id="previewOverlayLayer" class="preview-overlay-layer" aria-hidden="true"></div>
+    <div id="previewEffectLayer" class="preview-effect-layer" aria-hidden="true"></div>
     <div id="previewVignette" class="preview-vignette" aria-hidden="true"></div>
     <div id="audioTimelineVisual" class="audio-timeline-visual" style="display:none">
       <div class="audio-orb">🎵</div>
@@ -77,6 +80,13 @@ app.innerHTML=`
     <div class="preview-badge" id="previewBadge">NO MEDIA SELECTED</div><div class="preview-badge timeline-mode" id="timelineModeBadge">TIMELINE PREVIEW</div>
     <div class="preview-toolbar">
       <button class="btn mini" id="previewFullscreen">⛶ Fullscreen</button>
+    </div>
+    <div class="fullscreen-transport" id="fullscreenTransport" aria-label="Fullscreen timeline controls">
+      <button class="btn icon-btn" id="fullscreenToStart" title="Jump to start">⏮</button>
+      <button class="btn icon-btn primary" id="fullscreenPlayPause" title="Play or pause">▶</button>
+      <input id="fullscreenScrub" type="range" min="0" max="60" step=".01" value="0" aria-label="Timeline position">
+      <span class="time" id="fullscreenTimeReadout">00:00.00 / 00:00.00</span>
+      <button class="btn mini" id="fullscreenExit" title="Exit fullscreen">⛶ Exit</button>
     </div>
   </div>
 
@@ -280,9 +290,9 @@ app.innerHTML=`
     <div class="timeline-canvas" id="timelineCanvas">
       <div class="ruler" id="ruler"></div>
       <div class="track"><div class="track-label">VIDEO</div><div class="track-lane" id="videoLane"></div></div>
+      <div class="track effect-track"><div class="track-label">EFFECTS</div><div class="track-lane" id="effectLane" title="Drag animated effects here and place them at an exact time"></div></div>
       <div class="track"><div class="track-label">AUDIO</div><div class="track-lane" id="audioLane"></div></div>
       <div class="track overlay-track"><div class="track-label">OVERLAYS</div><div class="track-lane" id="overlayLane"></div></div>
-      <div class="track effect-track"><div class="track-label">EFFECTS</div><div class="track-lane" id="effectLane"></div></div>
       <div class="playhead" id="playhead"></div>
     </div>
   </div>
@@ -768,6 +778,7 @@ function updateTransport(){
   const el=activePreview();
   if(!el||el.style.display==='none'){
     $('timeReadout').textContent=`${fmt(state.playhead)} / 00:00.00`;
+    syncFullscreenTransport();
     return;
   }
   $('scrub').max=Number.isFinite(el.duration)?el.duration:60;
@@ -775,12 +786,23 @@ function updateTransport(){
   $('timeReadout').textContent=`${fmt(el.currentTime)} / ${fmt(el.duration)}`;
   state.playhead=el.currentTime||state.playhead;
   renderPlayhead();
+  syncFullscreenTransport();
+}
+function syncFullscreenTransport(){
+  const timeline=state.timelinePreview&&hasTimeline();
+  const media=activePreview();
+  const maximum=timeline?Math.max(1,projectEnd()):Number.isFinite(media?.duration)?media.duration:60;
+  const current=timeline?state.playhead:Number(media?.currentTime)||0;
+  $('fullscreenScrub').max=maximum;
+  $('fullscreenScrub').value=Math.min(maximum,current);
+  $('fullscreenTimeReadout').textContent=timeline?`${fmt(state.playhead)} / ${fmt(projectEnd())}`:`${fmt(current)} / ${fmt(media?.duration)}`;
+  $('fullscreenPlayPause').textContent=state.timelinePlaying||(!timeline&&media&&!media.paused)?'⏸':'▶';
 }
 [v,a].forEach(el=>{
   el.addEventListener('timeupdate',updateTransport);
-  el.addEventListener('play',()=>{if(!state.timelinePreview){state.isPlaying=true;$('playPause').textContent='⏸'}});
-  el.addEventListener('pause',()=>{if(!state.timelinePreview){state.isPlaying=false;$('playPause').textContent='▶'}});
-  el.addEventListener('ended',()=>{if(!state.timelinePreview){state.isPlaying=false;$('playPause').textContent='▶'}});
+  el.addEventListener('play',()=>{if(!state.timelinePreview){state.isPlaying=true;$('playPause').textContent='⏸';syncFullscreenTransport()}});
+  el.addEventListener('pause',()=>{if(!state.timelinePreview){state.isPlaying=false;$('playPause').textContent='▶';syncFullscreenTransport()}});
+  el.addEventListener('ended',()=>{if(!state.timelinePreview){state.isPlaying=false;$('playPause').textContent='▶';syncFullscreenTransport()}});
 });
 
 function makeTimelineClip(media,track,start){
@@ -1090,15 +1112,21 @@ function renderVisualCardLibrary(containerId,items,query,kind){
       if(kind==='effect'){
         button.draggable=true;
         button.addEventListener('dragstart',event=>{
+          button.classList.add('dragging');
           event.dataTransfer.effectAllowed='copy';
           event.dataTransfer.setData('application/x-emx-effect-id',item.id);
           event.dataTransfer.setData('text/plain',item.id);
+          $('effectLane').scrollIntoView({block:'nearest'});
         });
+        button.addEventListener('dragend',()=>button.classList.remove('dragging'));
       }
       const swatch=document.createElement('span');swatch.className='visual-card-swatch';swatch.dataset.swatch=item.swatch||'violet';
       const title=document.createElement('span');title.className='visual-card-title';title.textContent=item.title;
       const detail=document.createElement('span');detail.className='visual-card-detail';detail.textContent=item.detail;
       button.append(swatch,title,detail);
+      if(kind==='effect'){
+        const action=document.createElement('span');action.className='visual-card-action';action.textContent='⠿ DRAG  •  ＋ ADD';button.appendChild(action);
+      }
       button.addEventListener('click',()=>kind==='effect'?addEffectClip(item.id,state.playhead):applyVisualPreset(item.id,item.title));
       grid.appendChild(button);
     });
@@ -1250,10 +1278,12 @@ function updateInspector(){
 function bindRange(id,fn){$(id).addEventListener('input',e=>fn(+e.target.value))}
 function inspectorPrimaryClip(){return selectedTimelineClips().find(clip=>clip.id===state.selectedClipId)||null}
 function refreshTimelineAfterInspectorEdit(){
+  const wasPlaying=state.timelinePlaying;
+  if(wasPlaying)stopTimelinePlayback();
   state.playhead=Math.min(state.playhead,projectEnd());
   renderTimeline();
   updateInspector();
-  if(state.timelinePreview)previewTimelineAt(state.playhead,state.timelinePlaying);
+  if(state.timelinePreview)previewTimelineAt(state.playhead,false);
 }
 function beginInspectorHistory(label){
   const control=$(label.controlId);
@@ -1359,6 +1389,7 @@ function clearTransitionLink(clip,next){
   clip.transitionOut='none';
 }
 function configureTransition(clip,requestedType=clip.transitionOut){
+  state.timelinePreviewNeedsRearm=true;
   const next=nextVideoClip(clip);
   if(!visualConfig.transitionTypes.includes(requestedType)||requestedType==='none'){
     clearTransitionLink(clip,next);
@@ -1463,8 +1494,11 @@ function applyPreviewFx(primary=videoClipAtTime(state.playhead),secondary=null){
   v.style.filter=cssFilterForClip(primary,state.playhead);
   transitionVideo.style.filter=cssFilterForClip(secondary||primary,state.playhead);
   previewImage.style.filter=cssFilterForClip(primary,state.playhead);
+  if(primary)v.style.transform=previewClipTransform(primary,state.playhead);
+  if(secondary)transitionVideo.style.transform=previewClipTransform(secondary,state.playhead);
   const animated=animatedEffectStateAt(state.playhead);
   $('previewVignette').style.opacity=String(bounded(Math.max(clipVisual(primary).vignette,animated.vignette),0,1,0));
+  updateAnimatedEffectOverlay(state.playhead);
 }
 $('previewQuality').onchange=e=>state.settings.previewQuality=e.target.value;
 $('snapSetting').onchange=e=>state.settings.snap=e.target.value==='on';
@@ -1628,6 +1662,7 @@ function previewClipOpacity(c,t){
 }
 function previewClipTransform(c,t){
   const visual=clipVisual(c);
+  const animated=animatedEffectStateAt(t);
   const style=c.transitionInStyle||'none';
   const duration=bounded(c.transitionIn,0,2,0);
   let slide=0;
@@ -1637,12 +1672,12 @@ function previewClipTransform(c,t){
     slide=style==='slide-left'?offset:-offset;
   }
   const travel=Math.max(0,visual.zoom-1)*50;
-  const panX=visual.panX*travel;
-  const panY=visual.panY*travel;
-  return `translateX(${slide}%) translate(${panX.toFixed(3)}%,${panY.toFixed(3)}%) scale(${visual.zoom.toFixed(3)})`;
+  const panX=visual.panX*travel+animated.shakeX;
+  const panY=visual.panY*travel+animated.shakeY;
+  return `translateX(${slide}%) translate(${panX.toFixed(3)}%,${panY.toFixed(3)}%) scale(${(visual.zoom*animated.zoom).toFixed(3)}) rotate(${animated.rotate.toFixed(3)}deg)`;
 }
 function animatedEffectStateAt(t){
-  const result={brightness:0,contrast:1,saturation:1,hue:0,blur:0,vignette:0};
+  const result={brightness:0,contrast:1,saturation:1,hue:0,blur:0,vignette:0,grayscale:0,invert:0,shakeX:0,shakeY:0,rotate:0,zoom:1,sparkles:0,particles:0};
   for(const clip of effectClipsAtTime(t)){
     const phase=(Number(clip.trimStart)||0)+Math.max(0,t-clip.start);
     const wave=frequency=>(Math.sin(phase*Math.PI*2*frequency)+1)/2;
@@ -1655,6 +1690,13 @@ function animatedEffectStateAt(t){
       case 'warm-flicker': result.brightness+=.03+.07*wave(3.1);result.hue+=8+12*Math.sin(phase*Math.PI*2*1.1);result.saturation*=1.12;break;
       case 'nightclub': result.hue+=100*Math.sin(phase*Math.PI*2*1.8);result.saturation*=1.5;result.contrast*=1.15;break;
       case 'vignette-pulse': result.vignette=Math.max(result.vignette,.25+.55*wave(1.2));result.brightness-=.04*wave(1.2);break;
+      case 'sparkle-burst': result.sparkles=Math.max(result.sparkles,.3+.7*wave(1.7));result.brightness+=.025*wave(3.4);break;
+      case 'particle-rain': result.particles=Math.max(result.particles,.55+.35*wave(.65));break;
+      case 'negative-flash': result.invert=Math.max(result.invert,Math.sin(phase*Math.PI*5)>.52?1:0);result.contrast*=1.08;break;
+      case 'bw-flash': result.grayscale=Math.max(result.grayscale,Math.sin(phase*Math.PI*6)>.12?1:0);result.contrast*=1.12;break;
+      case 'camera-shake': result.shakeX+=1.2*Math.sin(phase*Math.PI*13);result.shakeY+=.9*Math.cos(phase*Math.PI*17);result.rotate+=.35*Math.sin(phase*Math.PI*11);result.zoom=Math.max(result.zoom,1.025);break;
+      case 'zoom-pulse': result.zoom*=1+.095*wave(1.35);break;
+      case 'glitch-scan': result.hue+=Math.sin(phase*Math.PI*15)>.35?42:-18;result.saturation*=1.35;result.contrast*=1.18;result.shakeX+=.55*Math.sin(phase*Math.PI*23);break;
     }
   }
   return result;
@@ -1666,7 +1708,38 @@ function cssFilterForClip(clip,time=state.playhead){
   const contrast=bounded((state.effects.contrast||1)*visual.contrast*animated.contrast,.1,3,1);
   const saturation=bounded((state.effects.saturation||1)*visual.saturation*animated.saturation,0,3,1);
   const blur=bounded((state.effects.blur||0)+visual.blur+animated.blur,0,20,0);
-  return `brightness(${1+brightness}) contrast(${contrast}) saturate(${saturation}) hue-rotate(${visual.hue+animated.hue}deg) blur(${blur}px)`;
+  return `brightness(${1+brightness}) contrast(${contrast}) saturate(${saturation}) hue-rotate(${visual.hue+animated.hue}deg) blur(${blur}px) grayscale(${animated.grayscale}) invert(${animated.invert})`;
+}
+function updateAnimatedEffectOverlay(t=state.playhead){
+  const layer=$('previewEffectLayer');
+  const animated=animatedEffectStateAt(t);
+  const mode=animated.sparkles>0?'sparkles':animated.particles>0?'particles':'';
+  if(layer.dataset.mode!==mode){
+    layer.dataset.mode=mode;layer.replaceChildren();
+    const count=mode==='sparkles'?18:mode==='particles'?24:0;
+    for(let index=0;index<count;index++){
+      const particle=document.createElement('span');particle.className=`preview-particle ${mode}`;
+      particle.dataset.index=String(index);layer.appendChild(particle);
+    }
+  }
+  layer.style.display=mode?'block':'none';
+  if(!mode)return;
+  [...layer.children].forEach((particle,index)=>{
+    const seed=(index*37+11)%101;
+    const x=(seed*1.83+index*13)%100;
+    if(mode==='sparkles'){
+      const y=(seed*2.41+index*7)%100;
+      const pulse=(Math.sin((t*4.5+index*.73)*Math.PI)+1)/2;
+      particle.style.left=`${x.toFixed(2)}%`;particle.style.top=`${y.toFixed(2)}%`;
+      particle.style.opacity=String((pulse*animated.sparkles).toFixed(3));
+      particle.style.transform=`translate(-50%,-50%) rotate(45deg) scale(${(.35+pulse*1.1).toFixed(3)})`;
+    }else{
+      const y=(seed*1.17+t*(18+(index%5)*4))%112-6;
+      particle.style.left=`${x.toFixed(2)}%`;particle.style.top=`${y.toFixed(2)}%`;
+      particle.style.opacity=String((animated.particles*(.35+(index%4)*.16)).toFixed(3));
+      particle.style.transform=`translate(-50%,-50%) scale(${(.55+(index%3)*.28).toFixed(2)})`;
+    }
+  });
 }
 function updateOverlayPreview(){
   const layer=$('previewOverlayLayer');
@@ -1748,6 +1821,8 @@ async function previewTimelineAt(t,autoplay=false){
     state.activeTimelineClipId=null;
     v.pause();transitionVideo.pause();v.style.display='none';transitionVideo.style.display='none';
     $('previewVignette').style.opacity='0';
+    $('previewEffectLayer').style.display='none';
+    if(requestId!==state.previewRequestId)return;
     await syncExternalTimelineAudio(state.playhead,autoplay);
     if(requestId!==state.previewRequestId)return;
     if(activeAudio.length){
@@ -1776,7 +1851,11 @@ async function previewTimelineAt(t,autoplay=false){
   state.activeTimelineClipId=c.id;
 
   if(needsSource){
+    if(transitionVideo.dataset.clipId===c.id){
+      transitionVideo.pause();transitionVideo.style.display='none';
+    }
     v.pause();v.src=media.url;v.dataset.mediaId=c.mediaId;v.style.display='block';
+    state.lastPrimaryResyncAt=0;
     $('previewEmpty').style.display='none';
     $('previewBadge').textContent=`TIMELINE • ${c.name}`;
     await new Promise(resolve=>{
@@ -1801,6 +1880,7 @@ async function previewTimelineAt(t,autoplay=false){
       const needsTransitionSource=transitionVideo.dataset.clipId!==secondary.id||transitionVideo.dataset.mediaId!==secondary.mediaId;
       if(needsTransitionSource){
         transitionVideo.pause();transitionVideo.src=secondaryMedia.url;transitionVideo.dataset.mediaId=secondary.mediaId;transitionVideo.dataset.clipId=secondary.id;
+        state.lastTransitionResyncAt=0;
         await new Promise(resolve=>{
           if(transitionVideo.readyState>=1)return resolve();
           const done=()=>{transitionVideo.removeEventListener('loadedmetadata',done);resolve()};
@@ -1818,6 +1898,7 @@ async function previewTimelineAt(t,autoplay=false){
     transitionVideo.pause();transitionVideo.style.display='none';transitionVideo.style.transform='translateX(0)';transitionVideo.removeAttribute('src');delete transitionVideo.dataset.clipId;delete transitionVideo.dataset.mediaId;
   }
   applyPreviewFx(c,secondary);
+  if(requestId!==state.previewRequestId)return;
   await syncExternalTimelineAudio(state.playhead,autoplay);
   if(requestId!==state.previewRequestId)return;
 
@@ -1831,6 +1912,7 @@ function updateTimelineTimeReadout(){
   $('scrub').max=Math.max(1,projectEnd());
   $('scrub').value=Math.min(projectEnd(),state.playhead);
   $('timeReadout').textContent=`${fmt(state.playhead)} / ${fmt(projectEnd())}`;
+  syncFullscreenTransport();
 }
 
 function stopTimelinePlayback(){
@@ -1845,21 +1927,42 @@ function stopTimelinePlayback(){
   v.pause();transitionVideo.pause();
   stopExternalTimelineAudio();
   $('playPause').textContent='▶';
+  syncFullscreenTransport();
+}
+function rearmTimelinePreviewAfterScrub(){
+  v.pause();transitionVideo.pause();
+  v.removeAttribute('src');transitionVideo.removeAttribute('src');
+  v.load();transitionVideo.load();
+  delete v.dataset.mediaId;
+  delete transitionVideo.dataset.mediaId;
+  delete transitionVideo.dataset.clipId;
+  state.activeTimelineClipId=null;
+  state.lastPrimaryResyncAt=0;state.lastTransitionResyncAt=0;
+  for(const player of timelineAudioPlayers.values()){
+    player.pause();player.removeAttribute('src');player.load();
+  }
+  timelineAudioPlayers.clear();
 }
 
 async function startTimelinePlayback(){
   if(!hasTimeline())return notify('Add video or audio clips to the timeline first.');
+  const needsRearm=state.timelinePreviewNeedsRearm;
+  cancelScrubPreviewWork();
+  stopTimelinePlayback();
+  if(needsRearm)rearmTimelinePreviewAfterScrub();
   if(state.playhead>=projectEnd()-.01)state.playhead=0;
 
   state.timelinePreview=true;
   state.timelinePlaying=true;
   state.isPlaying=true;
   $('playPause').textContent='⏸';
+  syncFullscreenTransport();
   const playbackToken=timelinePlaybackSession.begin();
   const ownsPlayback=()=>state.timelinePlaying&&state.timelinePreview&&timelinePlaybackSession.owns(playbackToken);
 
   await previewTimelineAt(state.playhead,true);
   if(!ownsPlayback())return;
+  state.timelinePreviewNeedsRearm=false;
   let last=performance.now();
 
   async function tick(now){
@@ -1886,8 +1989,9 @@ async function startTimelinePlayback(){
         if(!ownsPlayback()){state.timelineTimer=null;return}
       }else{
         const expected=previewSourceTime(c,state.playhead);
-        if(Math.abs((v.currentTime||0)-expected)>.35){
+        if(Math.abs((v.currentTime||0)-expected)>.75&&now-state.lastPrimaryResyncAt>800){
           try{v.currentTime=expected}catch{}
+          state.lastPrimaryResyncAt=now;
         }
         v.playbackRate=Math.max(.25,Math.min(4,c.speed||1));
         v.volume=Math.max(0,Math.min(1,c.volume??1))*Math.max(0,Math.min(1,+$('masterVolume').value||1));
@@ -1896,7 +2000,7 @@ async function startTimelinePlayback(){
         if(!ownsPlayback()){state.timelineTimer=null;return}
         if(secondary&&transitionVideo.dataset.clipId===secondary.id){
           const transitionExpected=previewSourceTime(secondary,state.playhead);
-          if(Math.abs((transitionVideo.currentTime||0)-transitionExpected)>.35){try{transitionVideo.currentTime=transitionExpected}catch{}}
+          if(Math.abs((transitionVideo.currentTime||0)-transitionExpected)>.75&&now-state.lastTransitionResyncAt>800){try{transitionVideo.currentTime=transitionExpected;state.lastTransitionResyncAt=now}catch{}}
           transitionVideo.playbackRate=Math.max(.25,Math.min(4,secondary.speed||1));
           transitionVideo.style.opacity=String(previewClipOpacity(secondary,state.playhead));
           if(transitionVideo.paused){try{await transitionVideo.play()}catch{}}
@@ -1962,17 +2066,36 @@ $('toStart').onclick=async()=>{
     $('scrub').value=0;updateTransport();renderPlayhead();
   }
 };
-async function previewScrubPosition(t,final=false){
+function cancelScrubPreviewWork(){
+  if(state.scrubPreviewTimer){clearTimeout(state.scrubPreviewTimer);state.scrubPreviewTimer=null}
+  scrubSession.cancel();
+  state.scrubbing=false;
+  state.scrubSessionToken=scrubSession.generation;
+}
+function beginScrubSession(){
+  cancelScrubPreviewWork();
+  stopTimelinePlayback();
+  state.scrubSessionToken=scrubSession.begin();
+  state.scrubbing=true;
+  state.timelinePreviewNeedsRearm=true;
+  const el=activePreview();if(el&&!el.paused)el.pause();
+  return state.scrubSessionToken;
+}
+async function previewScrubPosition(t,final=false,token=state.scrubSessionToken){
+  if(!scrubSession.owns(token))return;
   state.playhead=Math.max(0,Math.min(hasTimeline()?projectEnd():Number($('scrub').max)||0,t));
   renderPlayhead();
   if(hasTimeline())updateTimelineTimeReadout();
   else{
     const el=activePreview();
     $('timeReadout').textContent=`${fmt(state.playhead)} / ${fmt(Number(el?.duration)||0)}`;
+    syncFullscreenTransport();
   }
 
-  if(state.scrubPreviewTimer)clearTimeout(state.scrubPreviewTimer);
+  if(state.scrubPreviewTimer){clearTimeout(state.scrubPreviewTimer);state.scrubPreviewTimer=null}
   const run=async()=>{
+    state.scrubPreviewTimer=null;
+    if(!scrubSession.owns(token))return;
     if(hasTimeline()){
       await previewTimelineAt(state.playhead,false);
     }else{
@@ -1985,21 +2108,33 @@ async function previewScrubPosition(t,final=false){
   if(final)await run();
   else state.scrubPreviewTimer=setTimeout(run,70);
 }
-$('scrub').addEventListener('pointerdown',()=>{
-  state.scrubbing=true;
-  if(state.timelinePlaying)stopTimelinePlayback();
-  const el=activePreview();if(el&&!el.paused)el.pause();
-});
-$('scrub').addEventListener('input',e=>previewScrubPosition(+e.target.value,false));
-$('scrub').addEventListener('change',async e=>{
-  await previewScrubPosition(+e.target.value,true);
+async function finishScrubSession(value){
+  const token=state.scrubSessionToken;
+  if(!scrubSession.finish(token))return;
   state.scrubbing=false;
+  if(state.scrubPreviewTimer){clearTimeout(state.scrubPreviewTimer);state.scrubPreviewTimer=null}
+  await previewScrubPosition(value,true,token);
+}
+$('scrub').addEventListener('pointerdown',beginScrubSession);
+$('scrub').addEventListener('input',e=>{
+  if(!scrubSession.active)beginScrubSession();
+  previewScrubPosition(+e.currentTarget.value,false,state.scrubSessionToken);
 });
-$('scrub').addEventListener('pointerup',async e=>{
-  await previewScrubPosition(+e.target.value,true);
-  state.scrubbing=false;
+$('scrub').addEventListener('change',e=>finishScrubSession(+e.currentTarget.value));
+$('scrub').addEventListener('pointerup',e=>finishScrubSession(+e.currentTarget.value));
+$('scrub').addEventListener('pointercancel',cancelScrubPreviewWork);
+$('fullscreenToStart').onclick=()=>$('toStart').click();
+$('fullscreenPlayPause').onclick=()=>$('playPause').click();
+$('fullscreenScrub').addEventListener('pointerdown',beginScrubSession);
+$('fullscreenScrub').addEventListener('input',event=>{
+  $('scrub').value=event.currentTarget.value;
+  if(!scrubSession.active)beginScrubSession();
+  previewScrubPosition(+event.currentTarget.value,false,state.scrubSessionToken);
 });
-$('scrub').addEventListener('pointercancel',()=>{state.scrubbing=false});
+$('fullscreenScrub').addEventListener('change',event=>finishScrubSession(+event.currentTarget.value));
+$('fullscreenScrub').addEventListener('pointerup',event=>finishScrubSession(+event.currentTarget.value));
+$('fullscreenScrub').addEventListener('pointercancel',cancelScrubPreviewWork);
+$('fullscreenExit').onclick=()=>document.exitFullscreen?.();
 $('muteBtn').onclick=()=>{
   state.previewMuted=!state.previewMuted;
   v.muted=state.previewMuted;a.muted=state.previewMuted;
@@ -2827,11 +2962,11 @@ function renderUpdateState(update){
 }
 async function hydrateUpdateCenter(){
   if(!window.emxDesktop?.available){
-    renderUpdateState({status:'OFFLINE',currentVersion:'1.11.2',channel:'latest',configured:false,message:'Update Center requires the desktop application.',progress:{}});
+    renderUpdateState({status:'OFFLINE',currentVersion:'1.11.3',channel:'latest',configured:false,message:'Update Center requires the desktop application.',progress:{}});
     return;
   }
   try{renderUpdateState(await window.emxDesktop.updateStatus())}
-  catch(error){renderUpdateState({status:'UPDATE FAILED',currentVersion:'1.11.2',channel:'latest',configured:false,message:String(error?.message||error),progress:{}})}
+  catch(error){renderUpdateState({status:'UPDATE FAILED',currentVersion:'1.11.3',channel:'latest',configured:false,message:String(error?.message||error),progress:{}})}
 }
 if(window.emxDesktop?.available&&window.emxDesktop.onUpdateEvent){window.emxDesktop.onUpdateEvent(renderUpdateState)}
 function notifyManualUpdateCheck(update){

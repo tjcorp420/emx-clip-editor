@@ -171,7 +171,7 @@ function normalizedOverlay(c={}) {
     visual:normalizeClipVisual(c.visual)
   };
 }
-function timedEffectFilter(c={}) {
+function timedEffectFilter(c={},width=1920,height=1080) {
   const start=Math.max(0,n(c.start,0));
   const speed=clamp(n(c.speed,1),.25,4);
   const trimStart=Math.max(0,n(c.trimStart,0));
@@ -196,6 +196,20 @@ function timedEffectFilter(c={}) {
       return `hue=h='100*sin(3.6*PI*${phase})':s=1.5:${enabled},eq=contrast=1.15:${enabled}`;
     case 'vignette-pulse':
       return `vignette=angle='PI/(4+1.4*sin(2.4*PI*${phase}))':eval=frame:${enabled},eq=brightness='-0.04*(sin(2.4*PI*${phase})+1)/2':eval=frame:${enabled}`;
+    case 'sparkle-burst':
+      return `noise=alls=12:allf=t+u:${enabled},eq=brightness='0.025*(sin(6.8*PI*${phase})+1)/2':eval=frame:${enabled}`;
+    case 'particle-rain':
+      return `noise=alls=20:allf=t+u:${enabled},eq=contrast=1.08:brightness=0.015:${enabled}`;
+    case 'negative-flash':
+      return `negate=enable='between(t,${s},${e})*gt(sin(5*PI*${phase})\,0.52)',eq=contrast=1.08:${enabled}`;
+    case 'bw-flash':
+      return `hue=s='if(gt(sin(6*PI*${phase})\,0.12)\,0\,1)':${enabled},eq=contrast=1.12:${enabled}`;
+    case 'camera-shake':
+      return `rotate=angle='0.0061*sin(11*PI*${phase})':ow=iw:oh=ih:fillcolor=black:${enabled},scale=${Math.max(2,Math.round(width))}:${Math.max(2,Math.round(height))}`;
+    case 'zoom-pulse':
+      return `scale=w='iw*(1+0.095*(sin(2.7*PI*${phase})+1)/2*between(t,${s},${e}))':h='ih*(1+0.095*(sin(2.7*PI*${phase})+1)/2*between(t,${s},${e}))':eval=frame,crop=${Math.max(2,Math.round(width))}:${Math.max(2,Math.round(height))}`;
+    case 'glitch-scan':
+      return `hue=h='if(gt(sin(15*PI*${phase})\,0.35)\,42\,-18)':s=1.35:${enabled},noise=alls=9:allf=t+u:${enabled},eq=contrast=1.18:${enabled}`;
     default:
       return '';
   }
@@ -328,7 +342,7 @@ function buildExportArgs(project, probeByPath, outputPath) {
   });
 
   effectClips.forEach((clip,index)=>{
-    const effectFilter=timedEffectFilter(clip);
+    const effectFilter=timedEffectFilter(clip,width,height);
     if(!effectFilter)return;
     const next=`effectComp${index}`;
     filters.push(`[${composited}]${effectFilter}[${next}]`);

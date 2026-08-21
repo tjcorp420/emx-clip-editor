@@ -8,7 +8,8 @@ const exporter = fs.readFileSync(path.join(root, 'electron', 'exporter.cjs'), 'u
 const renderer = fs.readFileSync(path.join(root, 'src', 'main.js'), 'utf8');
 
 assert.ok(['none', 'vivid', 'cinematic', 'mono', 'retro', 'soft', 'neon-pop', 'cream', 'noir'].every(id=>Object.hasOwn(visual.presets,id)));
-assert.ok(visual.effectLibrary.length >= 8, 'The effects browser should ship a real curated library.');
+assert.ok(visual.effectLibrary.length >= 15, 'The effects browser should ship a real curated animated library.');
+assert.ok(['sparkle-burst','particle-rain','negative-flash','bw-flash','camera-shake','zoom-pulse','glitch-scan'].every(id=>visual.effectLibrary.some(effect=>effect.id===id)), 'Sparkle, particle, inversion, monochrome, motion, zoom, and glitch effects must be available.');
 assert.ok(visual.effectLibrary.every(effect=>!Object.hasOwn(visual.presets,effect.id)), 'Animated effects must be distinct from static filter presets.');
 assert.ok(visual.effectLibrary.every(effect=>Number(effect.duration)>0), 'Every animated effect needs a default timeline duration.');
 assert.ok(visual.filterLibrary.length >= 8, 'The filters browser should ship a real curated library.');
@@ -19,6 +20,7 @@ assert.ok(visual.defaultOverlay.opacity >= .1 && visual.defaultOverlay.opacity <
 assert.ok(exporter.includes('overlayClips'), 'Native exporter must accept timed image overlays.');
 assert.ok(exporter.includes('timedEffectFilter'), 'Native exporter must generate animated timeline effect filters.');
 assert.ok(exporter.includes('effectClips'), 'Native exporter must accept timed animated effect clips.');
+assert.ok(['sparkle-burst','particle-rain','negative-flash','bw-flash','camera-shake','zoom-pulse','glitch-scan'].every(id=>exporter.includes(`case '${id}'`)), 'Every new animated effect must have a native export filter.');
 assert.ok(exporter.includes('stop_mode=clone'), 'Native exporter must implement held freeze frames.');
 assert.ok(exporter.includes('videoTransitionFilters'), 'Native exporter must generate transition filters.');
 assert.ok(exporter.includes('videoOverlayX'), 'Native exporter must generate slide transition positions.');
@@ -29,9 +31,15 @@ assert.ok(renderer.includes('previewClipTransform'), 'Preview must animate slide
 assert.ok(renderer.includes('updateOverlayPreview'), 'Preview must render active image overlays.');
 assert.ok(renderer.includes('id="effectLibrary"') && renderer.includes('id="filterLibrary"') && renderer.includes('id="transitionLibrary"'), 'The visual browsers must be part of the real inspector UI.');
 assert.ok(renderer.includes('id="effectLane"') && renderer.includes('addEffectClip'), 'Animated effects must be draggable timed clips on a dedicated timeline lane.');
+assert.ok(renderer.indexOf('id="effectLane"') < renderer.indexOf('id="audioLane"'), 'The EFFECTS lane must remain visible directly beneath VIDEO at common desktop heights.');
+assert.ok(renderer.includes('application/x-emx-effect-id') && renderer.includes('⠿ DRAG  •  ＋ ADD'), 'Effect cards must expose reliable drag and click-to-add affordances.');
+assert.ok(renderer.includes('id="previewEffectLayer"') && renderer.includes('updateAnimatedEffectOverlay'), 'Sparkles and particles must animate in the live preview.');
+assert.match(renderer,/function refreshTimelineAfterInspectorEdit\(\)\{[\s\S]{0,160}if\(wasPlaying\)stopTimelinePlayback\(\);/,'Structural timeline edits must stop the active playback loop before preview refresh.');
+assert.ok(renderer.includes('now-state.lastPrimaryResyncAt>800'), 'Transition playback drift correction must be throttled to prevent rapid seek buzzing.');
 assert.ok(renderer.includes('Freeze Frame at Playhead') && renderer.includes('freezeFrameAtPlayhead'), 'Video context editing must expose a working freeze-frame action.');
 assert.ok(renderer.includes('TikTok / Reels 9:16') && renderer.includes('id="exportFit"'), 'High-quality vertical export controls must be visible in the app.');
 assert.ok(renderer.includes('id="clipZoom"') && renderer.includes('id="clipPanX"') && renderer.includes('id="clipPanY"'), 'Selected video clips must expose visual zoom and pan framing controls.');
 assert.ok(exporter.includes('videoFramingFilters') && exporter.includes('visual.zoom'), 'Native export must bake visual zoom and pan into the MP4.');
+assert.ok(renderer.includes('id="fullscreenPlayPause"') && renderer.includes('id="fullscreenScrub"') && renderer.includes('syncFullscreenTransport'), 'Fullscreen preview must expose synchronized timeline Play/Pause and scrubbing controls.');
 
 console.log('EMX VISUAL EDITING CONTRACT: PASS');
