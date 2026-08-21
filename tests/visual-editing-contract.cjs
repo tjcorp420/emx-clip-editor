@@ -35,7 +35,13 @@ assert.ok(renderer.indexOf('id="effectLane"') < renderer.indexOf('id="audioLane"
 assert.ok(renderer.includes('application/x-emx-effect-id') && renderer.includes('⠿ DRAG  •  ＋ ADD'), 'Effect cards must expose reliable drag and click-to-add affordances.');
 assert.ok(renderer.includes('id="previewEffectLayer"') && renderer.includes('updateAnimatedEffectOverlay'), 'Sparkles and particles must animate in the live preview.');
 assert.match(renderer,/function refreshTimelineAfterInspectorEdit\(\)\{[\s\S]{0,160}if\(wasPlaying\)stopTimelinePlayback\(\);/,'Structural timeline edits must stop the active playback loop before preview refresh.');
-assert.ok(renderer.includes('now-state.lastPrimaryResyncAt>800'), 'Transition playback drift correction must be throttled to prevent rapid seek buzzing.');
+// The primary video element is the authoritative clock, so it is never
+// drift-seeked at all. The incoming transition element is slaved to that
+// clock through a bounded, throttled correction policy, which is what keeps
+// an overlap from turning into rapid seek buzzing.
+assert.ok(!renderer.includes('try{v.currentTime=expected}catch'), 'The primary video must never be drift-seeked onto a hand-integrated playhead.');
+assert.ok(renderer.includes('planSlaveCorrection({'), 'Transition drift correction must go through the bounded, throttled slave policy.');
+assert.ok(renderer.includes('lastCorrectionAt:state.lastTransitionResyncAt'), 'Transition drift correction must be throttled to prevent rapid seek buzzing.');
 assert.ok(renderer.includes('Freeze Frame at Playhead') && renderer.includes('freezeFrameAtPlayhead'), 'Video context editing must expose a working freeze-frame action.');
 assert.ok(renderer.includes('TikTok / Reels 9:16') && renderer.includes('id="exportFit"'), 'High-quality vertical export controls must be visible in the app.');
 assert.ok(renderer.includes('id="clipZoom"') && renderer.includes('id="clipPanX"') && renderer.includes('id="clipPanY"'), 'Selected video clips must expose visual zoom and pan framing controls.');

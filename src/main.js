@@ -6,13 +6,14 @@ import { reconcileSelection, selectIds } from './lib/selection.js';
 import { normalizeImportInput } from './lib/importInput.js';
 import { createPlaybackSession } from './lib/playbackSession.js';
 import { createScrubSession } from './lib/scrubSession.js';
+import { createTimelineClock, planSlaveCorrection, CLOCK_LIMITS } from './lib/timelineClock.js';
 import visualConfig from '../electron/visuals.json';
 
 const app=document.querySelector('#app');
 const state={
   media:[],videoClips:[],audioClips:[],overlayClips:[],effectClips:[],selectedMediaId:null,selectedClipId:null,
   selectedMediaIds:new Set(),selectedClipIds:new Set(),mediaSelectionAnchorId:null,clipSelectionAnchorId:null,
-  playhead:0,pxPerSec:10,isPlaying:false,timelinePlaying:false,fitTimeline:true,timelinePreview:true,timelineTimer:null,activeTimelineClipId:null,previewRequestId:0,previewMuted:false,scrubbing:false,scrubSessionToken:0,scrubPreviewTimer:null,timelinePreviewNeedsRearm:false,lastPrimaryResyncAt:0,lastTransitionResyncAt:0,renderBusy:false,renderStartedAt:0,lastExportPath:'',
+  playhead:0,pxPerSec:10,isPlaying:false,timelinePlaying:false,fitTimeline:true,timelinePreview:true,timelineTimer:null,activeTimelineClipId:null,previewRequestId:0,previewMuted:false,scrubbing:false,scrubSessionToken:0,scrubPreviewTimer:null,lastTransitionResyncAt:0,renderBusy:false,renderStartedAt:0,lastExportPath:'',
   history:[],future:[],
   branding:{position:'bottom-right',opacity:.78},
   mediaView:'grid',mediaThumbnailSize:132,
@@ -24,6 +25,7 @@ const state={
 const uid=()=>crypto.randomUUID?.()||`${Date.now()}_${Math.random().toString(16).slice(2)}`;
 const timelinePlaybackSession=createPlaybackSession();
 const scrubSession=createScrubSession();
+const timelineClock=createTimelineClock();
 
 app.innerHTML=`
 <div class="app">
@@ -1389,7 +1391,6 @@ function clearTransitionLink(clip,next){
   clip.transitionOut='none';
 }
 function configureTransition(clip,requestedType=clip.transitionOut){
-  state.timelinePreviewNeedsRearm=true;
   const next=nextVideoClip(clip);
   if(!visualConfig.transitionTypes.includes(requestedType)||requestedType==='none'){
     clearTransitionLink(clip,next);
@@ -1763,6 +1764,7 @@ function updateOverlayPreview(){
 
 
 const timelineAudioPlayers=new Map();
+const timelineAudioCorrections=new Map();
 
 function getTimelineAudioPlayer(c){
   if(timelineAudioPlayers.has(c.id))return timelineAudioPlayers.get(c.id);
@@ -1786,9 +1788,17 @@ async function syncExternalTimelineAudio(t,playing){
     if(!player)continue;
     if(t>=c.start&&t<end){
       activeIds.add(c.id);
-      const expected=c.trimStart+(t-c.start)*(c.speed||1);
-      if(Math.abs((player.currentTime||0)-expected)>.25){
-        try{player.currentTime=Math.max(0,expected)}catch{}
+      // Slaved to the authoritative clock: bounded and throttled, so a running
+      // preview can never turn into a per-frame audio seek storm (the ticking).
+      const plan=planSlaveCorrection({
+        expected:c.trimStart+(t-c.start)*(c.speed||1),
+        actual:player.currentTime||0,
+        now:performance.now(),
+        lastCorrectionAt:timelineAudioCorrections.has(c.id)?timelineAudioCorrections.get(c.id):-Infinity
+      });
+      if(plan.seek){
+        try{player.currentTime=plan.to}catch{}
+        timelineAudioCorrections.set(c.id,plan.at);
       }
       player.playbackRate=Math.max(.25,Math.min(4,c.speed||1));
       player.volume=Math.max(0,Math.min(1,c.volume??1))*clipGainAt(c,t)*Math.max(0,Math.min(1,+$('masterVolume').value||1));
@@ -1809,6 +1819,7 @@ async function previewTimelineAt(t,autoplay=false){
   state.timelinePreview=true;
   v.onloadedmetadata=null;a.onloadedmetadata=null;
   state.playhead=Math.max(0,Math.min(projectEnd()||0,t));
+  timelineClock.seekTo(state.playhead,performance.now());
   $('timelineModeBadge').style.display='block';
   a.pause();a.style.display='none';previewImage.style.display='none';
 
@@ -1855,7 +1866,6 @@ async function previewTimelineAt(t,autoplay=false){
       transitionVideo.pause();transitionVideo.style.display='none';
     }
     v.pause();v.src=media.url;v.dataset.mediaId=c.mediaId;v.style.display='block';
-    state.lastPrimaryResyncAt=0;
     $('previewEmpty').style.display='none';
     $('previewBadge').textContent=`TIMELINE • ${c.name}`;
     await new Promise(resolve=>{
@@ -1924,32 +1934,54 @@ function stopTimelinePlayback(){
   }
   state.timelinePlaying=false;
   state.isPlaying=false;
+  timelineClock.reset(state.playhead,performance.now());
   v.pause();transitionVideo.pause();
   stopExternalTimelineAudio();
   $('playPause').textContent='▶';
   syncFullscreenTransport();
 }
-function rearmTimelinePreviewAfterScrub(){
-  v.pause();transitionVideo.pause();
-  v.removeAttribute('src');transitionVideo.removeAttribute('src');
-  v.load();transitionVideo.load();
-  delete v.dataset.mediaId;
-  delete transitionVideo.dataset.mediaId;
-  delete transitionVideo.dataset.clipId;
-  state.activeTimelineClipId=null;
-  state.lastPrimaryResyncAt=0;state.lastTransitionResyncAt=0;
-  for(const player of timelineAudioPlayers.values()){
-    player.pause();player.removeAttribute('src');player.load();
+/**
+ * V1.11.4 tore down and reloaded both video elements plus every external audio
+ * player after any scrub, because a desynchronised clock made ordinary playback
+ * look broken and a full rebuild was the only thing that appeared to help. With
+ * one authoritative clock that blanket teardown is no longer needed, so recovery
+ * is now targeted: only an element that genuinely failed to decode or lost its
+ * source is rebuilt. Nothing is discarded on the healthy path, so the user never
+ * has to delete and re-add a clip to get playback back.
+ */
+function isPoisonedMediaElement(el){
+  if(!el)return false;
+  if(!el.currentSrc&&!el.getAttribute('src'))return false;
+  return Boolean(el.error)||el.networkState===HTMLMediaElement.NETWORK_NO_SOURCE;
+}
+function recoverPoisonedPreviewElements(){
+  let recovered=false;
+  for(const el of [v,transitionVideo]){
+    if(!isPoisonedMediaElement(el))continue;
+    recovered=true;
+    el.pause();el.removeAttribute('src');el.load();
+    delete el.dataset.mediaId;
+    delete el.dataset.clipId;
   }
-  timelineAudioPlayers.clear();
+  for(const [id,player] of [...timelineAudioPlayers]){
+    if(!isPoisonedMediaElement(player))continue;
+    recovered=true;
+    player.pause();player.removeAttribute('src');player.load();
+    timelineAudioPlayers.delete(id);
+    timelineAudioCorrections.delete(id);
+  }
+  if(recovered){
+    state.activeTimelineClipId=null;
+    state.lastTransitionResyncAt=0;
+  }
+  return recovered;
 }
 
 async function startTimelinePlayback(){
   if(!hasTimeline())return notify('Add video or audio clips to the timeline first.');
-  const needsRearm=state.timelinePreviewNeedsRearm;
   cancelScrubPreviewWork();
   stopTimelinePlayback();
-  if(needsRearm)rearmTimelinePreviewAfterScrub();
+  recoverPoisonedPreviewElements();
   if(state.playhead>=projectEnd()-.01)state.playhead=0;
 
   state.timelinePreview=true;
@@ -1962,61 +1994,110 @@ async function startTimelinePlayback(){
 
   await previewTimelineAt(state.playhead,true);
   if(!ownsPlayback())return;
-  state.timelinePreviewNeedsRearm=false;
-  let last=performance.now();
+  timelineClock.reset(state.playhead,performance.now());
 
-  async function tick(now){
+  // Every media promise below starts without blocking the animation frame and is
+  // de-duplicated per element. A slow source load or a stalled play() can
+  // therefore never throttle the loop, and repeated frames can never stack up
+  // parallel preview requests for the same handoff.
+  let handoffPending=false;
+  const requestHandoff=()=>{
+    if(handoffPending||!ownsPlayback())return;
+    handoffPending=true;
+    Promise.resolve(previewTimelineAt(state.playhead,true)).catch(()=>{}).finally(()=>{
+      handoffPending=false;
+      if(ownsPlayback())timelineClock.reset(state.playhead,performance.now());
+    });
+  };
+  const resumePending=new Set();
+  const requestResume=element=>{
+    if(!ownsPlayback()||!element||resumePending.has(element)||!element.paused)return;
+    resumePending.add(element);
+    Promise.resolve(element.play()).catch(()=>{}).finally(()=>{resumePending.delete(element)});
+  };
+  let audioPending=false;
+  const requestAudioSync=()=>{
+    if(audioPending||!ownsPlayback())return;
+    audioPending=true;
+    Promise.resolve(syncExternalTimelineAudio(state.playhead,true)).catch(()=>{}).finally(()=>{audioPending=false});
+  };
+
+  function tick(now){
     if(!ownsPlayback()){state.timelineTimer=null;return}
-    const dt=Math.min(.08,(now-last)/1000);
-    last=now;
-    state.playhead+=dt;
+    // Re-arm the next frame before touching any media, so the loop rate stays
+    // decoupled from media promise latency.
+    state.timelineTimer=requestAnimationFrame(tick);
+
+    // ---- one authoritative clock ----
+    // While the primary element is playing the clip it was loaded for, that
+    // element *is* the clock and timeline time is derived from it. Time is held
+    // (never advanced) whenever the element cannot keep it, so the timeline and
+    // the media clock can never separate and the primary is never seeked
+    // backwards to catch up.
+    const clockClip=state.activeTimelineClipId?state.videoClips.find(clip=>clip.id===state.activeTimelineClipId):null;
+    const primaryOwnsClock=Boolean(clockClip)&&!clockClip.isFreeze&&v.dataset.mediaId===clockClip.mediaId&&v.style.display!=='none';
+    if(primaryOwnsClock&&!v.paused){
+      if(timelineClock.syncToMedia(v.currentTime,clockClip,now)===null)timelineClock.advanceWall(now);
+    }else if(clockClip){
+      timelineClock.hold(now);
+      if(timelineClock.heldFor(now)>CLOCK_LIMITS.stallRecoveryMs){
+        timelineClock.advanceWall(now);
+        requestHandoff();
+      }
+    }else{
+      timelineClock.advanceWall(now);
+    }
+    state.playhead=timelineClock.time;
 
     if(state.playhead>=projectEnd()){
       state.playhead=projectEnd();
-      await previewTimelineAt(state.playhead,false);
       stopTimelinePlayback();
+      Promise.resolve(previewTimelineAt(state.playhead,false)).catch(()=>{});
       return;
     }
 
     const activeVideos=videoClipsAtTime(state.playhead);
     const c=activeVideos[0]||null;
     const secondary=activeVideos[1]||null;
+
     if(c){
-      const currentId=state.activeTimelineClipId;
       const transitionNeedsRefresh=Boolean(secondary)!==(transitionVideo.style.display!=='none')||(secondary&&transitionVideo.dataset.clipId!==secondary.id);
-      if(currentId!==c.id || v.style.display==='none'||transitionNeedsRefresh){
-        await previewTimelineAt(state.playhead,true);
-        if(!ownsPlayback()){state.timelineTimer=null;return}
-      }else{
-        const expected=previewSourceTime(c,state.playhead);
-        if(Math.abs((v.currentTime||0)-expected)>.75&&now-state.lastPrimaryResyncAt>800){
-          try{v.currentTime=expected}catch{}
-          state.lastPrimaryResyncAt=now;
-        }
-        v.playbackRate=Math.max(.25,Math.min(4,c.speed||1));
-        v.volume=Math.max(0,Math.min(1,c.volume??1))*Math.max(0,Math.min(1,+$('masterVolume').value||1));
-        v.style.opacity=String(previewClipOpacity(c,state.playhead));
-        if(v.paused){try{await v.play()}catch{}}
-        if(!ownsPlayback()){state.timelineTimer=null;return}
-        if(secondary&&transitionVideo.dataset.clipId===secondary.id){
-          const transitionExpected=previewSourceTime(secondary,state.playhead);
-          if(Math.abs((transitionVideo.currentTime||0)-transitionExpected)>.75&&now-state.lastTransitionResyncAt>800){try{transitionVideo.currentTime=transitionExpected;state.lastTransitionResyncAt=now}catch{}}
-          transitionVideo.playbackRate=Math.max(.25,Math.min(4,secondary.speed||1));
-          transitionVideo.style.opacity=String(previewClipOpacity(secondary,state.playhead));
-          if(transitionVideo.paused){try{await transitionVideo.play()}catch{}}
-          if(!ownsPlayback()){state.timelineTimer=null;return}
-        }
-        applyPreviewFx(c,secondary);
-        await syncExternalTimelineAudio(state.playhead,true);
-        if(!ownsPlayback()){state.timelineTimer=null;return}
-        updateOverlayPreview();renderPlayhead();
-        updateTimelineTimeReadout();
+      if(state.activeTimelineClipId!==c.id||v.style.display==='none'||transitionNeedsRefresh){
+        // Structural handoff: promote the incoming clip atomically, off-frame.
+        requestHandoff();
+        return;
       }
+      if(v.paused)requestResume(v);
+      v.playbackRate=Math.max(.25,Math.min(4,c.speed||1));
+      v.volume=Math.max(0,Math.min(1,c.volume??1))*clipGainAt(c,state.playhead)*Math.max(0,Math.min(1,+$('masterVolume').value||1));
+      v.muted=state.previewMuted;
+      v.style.opacity=String(previewClipOpacity(c,state.playhead));
+      if(secondary&&transitionVideo.dataset.clipId===secondary.id){
+        // The incoming transition element is slaved to the authoritative clock,
+        // bounded and throttled, and stays muted so an overlap never leaves two
+        // audio-producing elements running at once.
+        const plan=planSlaveCorrection({
+          expected:previewSourceTime(secondary,state.playhead),
+          actual:transitionVideo.currentTime,
+          now,
+          lastCorrectionAt:state.lastTransitionResyncAt||-Infinity
+        });
+        if(plan.seek){try{transitionVideo.currentTime=plan.to}catch{}state.lastTransitionResyncAt=plan.at}
+        transitionVideo.playbackRate=Math.max(.25,Math.min(4,secondary.speed||1));
+        transitionVideo.muted=true;
+        transitionVideo.style.opacity=String(previewClipOpacity(secondary,state.playhead));
+        if(transitionVideo.paused)requestResume(transitionVideo);
+      }
+      applyPreviewFx(c,secondary);
+      requestAudioSync();
+      updateOverlayPreview();renderPlayhead();updateTimelineTimeReadout();
     }else{
-      v.pause();transitionVideo.pause();v.style.display='none';transitionVideo.style.display='none';
+      if(v.style.display!=='none'||transitionVideo.style.display!=='none'){
+        v.pause();transitionVideo.pause();v.style.display='none';transitionVideo.style.display='none';
+        state.activeTimelineClipId=null;
+      }
+      requestAudioSync();
       const activeAudio=audioClipsAtTime(state.playhead);
-      await syncExternalTimelineAudio(state.playhead,true);
-      if(!ownsPlayback()){state.timelineTimer=null;return}
       if(activeAudio.length){
         const first=activeAudio[0],media=state.media.find(m=>m.id===first.mediaId);
         $('previewEmpty').style.display='none';
@@ -2033,9 +2114,6 @@ async function startTimelinePlayback(){
       }
       updateOverlayPreview();renderPlayhead();updateTimelineTimeReadout();
     }
-
-    if(ownsPlayback())state.timelineTimer=requestAnimationFrame(tick);
-    else state.timelineTimer=null;
   }
 
   if(ownsPlayback())state.timelineTimer=requestAnimationFrame(tick);
@@ -2077,7 +2155,6 @@ function beginScrubSession(){
   stopTimelinePlayback();
   state.scrubSessionToken=scrubSession.begin();
   state.scrubbing=true;
-  state.timelinePreviewNeedsRearm=true;
   const el=activePreview();if(el&&!el.paused)el.pause();
   return state.scrubSessionToken;
 }
