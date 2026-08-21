@@ -16,6 +16,9 @@ for (const token of [
   "ipcMain.handle('emx:release-media-token'",
   'defaultImportFolder',
   'createMediaDescriptor',
+  "request.headers.get('range')",
+  'headers:{Range:range}',
+  "headers.set('Access-Control-Allow-Origin','*')",
   "['.png','image/png']",
   'Video, audio, and image overlays'
 ]) assert.ok(main.includes(token), `Missing trusted import workflow token: ${token}`);

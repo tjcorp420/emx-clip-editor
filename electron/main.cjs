@@ -144,7 +144,12 @@ app.whenReady().then(()=>{
     const mediaToken=decodeURIComponent(new URL(request.url).pathname.replace(/^\/+/,''));
     const mediaPath=mediaTokens.get(mediaToken);
     if(!mediaPath||!supportedMediaPath(mediaPath))return new Response('Media is unavailable.',{status:404});
-    return net.fetch(pathToFileURL(mediaPath).href);
+    const range=request.headers.get('range');
+    return net.fetch(pathToFileURL(mediaPath).href,range?{headers:{Range:range}}:undefined).then(response=>{
+      const headers=new Headers(response.headers);
+      headers.set('Access-Control-Allow-Origin','*');
+      return new Response(response.body,{status:response.status,statusText:response.statusText,headers});
+    });
   });
   createWindow();
   updateService=new EmxUpdateService({

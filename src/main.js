@@ -24,7 +24,7 @@ const uid=()=>crypto.randomUUID?.()||`${Date.now()}_${Math.random().toString(16)
 app.innerHTML=`
 <div class="app">
 <header class="topbar">
-  <div class="brand"><img class="logo" src="./emx-logo.png" onerror="this.style.display='none'" alt="EMX"><div><h1>EMX CLIP STUDIO</h1><small id="appVersionLabel">Desktop Timeline Editor • V1.10.0</small></div></div>
+  <div class="brand"><img class="logo" src="./emx-logo.png" onerror="this.style.display='none'" alt="EMX"><div><h1>EMX CLIP STUDIO</h1><small id="appVersionLabel">Desktop Timeline Editor • V1.10.1</small></div></div>
   <div class="top-actions">
     <button class="btn undo-last" id="undoLastBtn" disabled>↶ UNDO LAST</button><button class="btn" id="redoBtn" disabled>↷ Redo</button><button class="btn" id="newProject">New</button>
     <button class="btn" id="openFolder">📁 Clips Folder</button>
@@ -399,7 +399,7 @@ async function makeThumbnail(source,mime,duration){
   if(String(mime||'').startsWith('image/')) return source;
   if(!String(mime||'').startsWith('video/')) return null;
   return new Promise(resolve=>{
-    const vid=document.createElement('video');vid.muted=true;vid.playsInline=true;vid.preload='metadata';
+    const vid=document.createElement('video');vid.muted=true;vid.playsInline=true;vid.preload='metadata';vid.crossOrigin='anonymous';
     vid.onloadedmetadata=()=>{vid.currentTime=Math.min(Math.max(.25,duration*.08),Math.max(.25,duration-.1))};
     vid.onseeked=()=>{
       const c=document.createElement('canvas');c.width=320;c.height=180;
@@ -660,6 +660,28 @@ $('undoLastBtn').onclick=undo;
 $('redoBtn').onclick=redo;
 
 function activePreview(){return v.style.display!=='none'?v:a}
+function mediaErrorMessage(el){
+  const code=Number(el?.error?.code||0);
+  return ({1:'The media load was aborted.',2:'The media file could not be reached.',3:'The media file could not be decoded.',4:'This media format is not supported by the preview engine.'})[code]||'The preview did not become ready in time.';
+}
+function waitForPreviewReady(el,timeoutMs=7000){
+  return new Promise((resolve,reject)=>{
+    if(el.readyState>=HTMLMediaElement.HAVE_FUTURE_DATA)return resolve();
+    let timer;
+    const cleanup=()=>{
+      clearTimeout(timer);
+      el.removeEventListener('canplay',ready);
+      el.removeEventListener('loadeddata',ready);
+      el.removeEventListener('error',failed);
+    };
+    const ready=()=>{cleanup();resolve()};
+    const failed=()=>{cleanup();reject(new Error(mediaErrorMessage(el)))};
+    el.addEventListener('canplay',ready,{once:true});
+    el.addEventListener('loadeddata',ready,{once:true});
+    el.addEventListener('error',failed,{once:true});
+    timer=setTimeout(()=>{cleanup();reject(new Error(mediaErrorMessage(el)))},timeoutMs);
+  });
+}
 async function selectMedia(id,autoplay=true,selectionOptions={}){
   setMediaSelection(id,selectionOptions);state.timelinePreview=false;state.activeTimelineClipId=null;$('timelineModeBadge').style.display='none';renderMedia();updateInspector();
   const m=state.media.find(x=>x.id===id);if(!m)return;
@@ -671,13 +693,25 @@ async function selectMedia(id,autoplay=true,selectionOptions={}){
     updateOverlayPreview();
     return;
   }
-  const el=m.type==='video'?v:a;el.src=m.url;el.style.display=m.type==='video'?'block':'block';el.volume=+$('masterVolume').value;
+  const el=m.type==='video'?v:a;el.src=m.url;el.load();el.style.display='block';el.volume=+$('masterVolume').value;
   $('previewBadge').textContent=m.name;
   const onMeta=()=>{
     $('scrub').max=Number.isFinite(el.duration)?el.duration:m.duration;
     updateTransport();
   };
   el.onloadedmetadata=onMeta;
+  try{
+    await waitForPreviewReady(el);
+    if(state.selectedMediaId!==id||el.src!==m.url)return;
+    onMeta();
+    if(m.type==='video'&&!m.thumb){
+      const thumbnail=await makeThumbnail(m.url,m.mime,m.duration);
+      if(thumbnail&&state.media.find(item=>item.id===m.id)===m){m.thumb=thumbnail;renderMedia()}
+    }
+  }catch(error){
+    if(state.selectedMediaId===id)notify(`Preview unavailable: ${error?.message||error}`,'error','Media Preview Failed');
+    return;
+  }
   if(autoplay&&state.settings.autoplayPreview){
     try{
       await el.play();
@@ -2527,11 +2561,11 @@ function renderUpdateState(update){
 }
 async function hydrateUpdateCenter(){
   if(!window.emxDesktop?.available){
-    renderUpdateState({status:'OFFLINE',currentVersion:'1.10.0',channel:'latest',configured:false,message:'Update Center requires the desktop application.',progress:{}});
+    renderUpdateState({status:'OFFLINE',currentVersion:'1.10.1',channel:'latest',configured:false,message:'Update Center requires the desktop application.',progress:{}});
     return;
   }
   try{renderUpdateState(await window.emxDesktop.updateStatus())}
-  catch(error){renderUpdateState({status:'UPDATE FAILED',currentVersion:'1.10.0',channel:'latest',configured:false,message:String(error?.message||error),progress:{}})}
+  catch(error){renderUpdateState({status:'UPDATE FAILED',currentVersion:'1.10.1',channel:'latest',configured:false,message:String(error?.message||error),progress:{}})}
 }
 if(window.emxDesktop?.available&&window.emxDesktop.onUpdateEvent){window.emxDesktop.onUpdateEvent(renderUpdateState)}
 function notifyManualUpdateCheck(update){

@@ -2,7 +2,7 @@
 
 This is a factual implementation tracker for the V1.10 roadmap, not marketing copy. “Available” means connected to the running Electron app; “planned” is not a release promise.
 
-| Workflow area | Status in 1.10.0 visual-editing foundation | Evidence / next integration boundary |
+| Workflow area | Status in 1.10.1 visual-editing foundation | Evidence / next integration boundary |
 | --- | --- | --- |
 | Dense media browser | Available | Resources Media/Audio tabs, search/sort, display modes, thumbnail sizing, context actions, Ctrl/Shift multi-select, and safe batch project removal. |
 | Folder import choice | Available | A selected folder can import all supported direct children now or become the saved default directory for later selective multi-file import. Native Electron descriptors are normalized before browser-only File operations, preserving trusted native export paths. |

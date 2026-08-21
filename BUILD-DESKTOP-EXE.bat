@@ -1,10 +1,10 @@
 @echo off
-title EMX Clip Studio V1.10.0 FAST Friend Builder
+title EMX Clip Studio V1.10.1 FAST Friend Builder
 cd /d "%~dp0"
 
 echo.
 echo ============================================================
-echo       EMX CLIP STUDIO V1.10.0 - FAST FRIEND INSTALLER
+echo       EMX CLIP STUDIO V1.10.1 - FAST FRIEND INSTALLER
 echo ============================================================
 echo.
 echo This is the NORMAL build you should use.

@@ -54,6 +54,7 @@ run(process.execPath, ['tests/timeline-math-smoke.mjs']);
 run(process.execPath, ['tests/selection-smoke.mjs']);
 run(process.execPath, ['tests/watermark-contract.cjs']);
 run(process.execPath, ['tests/import-workflow-contract.cjs']);
+run(path.join(projectRoot, 'node_modules', 'electron', 'dist', 'electron.exe'), ['tests/desktop-media-protocol-smoke.cjs']);
 run(process.execPath, ['tests/visual-editing-contract.cjs']);
 run(process.execPath, ['tests/update-state-contract.cjs']);
 run(process.execPath, ['tests/update-service-contract.cjs']);
