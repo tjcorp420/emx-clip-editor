@@ -1,6 +1,6 @@
-# EMX Clip Studio 1.11.3
+# EMX Clip Studio 1.11.4
 
-EMX Clip Studio is a Windows Electron timeline editor backed by private FFmpeg/FFprobe binaries. Version 1.11.3 isolates scrub and transition playback sessions, automatically rearms preview media after seeks or structural changes, exposes fullscreen timeline controls, and expands the draggable timed-effects library to 15 preview/export-matched effects.
+EMX Clip Studio is a Windows Electron timeline editor backed by private FFmpeg/FFprobe binaries. Version 1.11.4 isolates scrub and transition playback sessions, automatically rearms preview media after seeks or structural changes, exposes fullscreen timeline controls, and expands the draggable timed-effects library to 15 effects with native generated sparkle and falling-particle export.
 
 ## What is implemented in this build
 
@@ -28,7 +28,7 @@ EMX Clip Studio is a Windows Electron timeline editor backed by private FFmpeg/F
 
 ## Important release boundaries
 
-1. V1.11.3 is currently an **unsigned** Windows build. The Update Center reports that fact; do not describe a release as signed until code-signing has actually been configured and verified.
+1. V1.11.4 is currently an **unsigned** Windows build. The Update Center reports that fact; do not describe a release as signed until code-signing has actually been configured and verified.
 2. A normal local/dev build deliberately reports **Offline** in the Update Center. It does not invent an update URL.
 3. This is not complete CapCut parity. V1.11 delivers a solid timed-effects and short-form export layer, but keyframes, masks, text/captions, auto reframe, tracking, stabilization, templates, project files/autosave, and many effect families remain explicitly tracked in [docs/CAPCUT-PARITY-MATRIX.md](docs/CAPCUT-PARITY-MATRIX.md).
 

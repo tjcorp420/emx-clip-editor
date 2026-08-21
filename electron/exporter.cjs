@@ -171,6 +171,31 @@ function normalizedOverlay(c={}) {
     visual:normalizeClipVisual(c.visual)
   };
 }
+function generatedEffectDrawboxes(kind,start,end,phase) {
+  const enabled=`between(t,${start},${end})`;
+  if(kind==='particle-rain'){
+    return Array.from({length:14},(_,index)=>{
+      const x=((index*37+9)%97)/100;
+      const offset=(index*29)%251;
+      const speed=76+(index%5)*23;
+      const color=index%3===0?'0xB8FFAB@0.78':index%3===1?'white@0.72':'0xD56CFF@0.70';
+      return `drawbox=x='${x.toFixed(3)}*iw':y='mod(${offset}+${speed}*t\,ih+24)-12':w=${3+(index%3)}:h=${8+(index%4)*2}:color=${color}:t=fill:enable='${enabled}'`;
+    }).join(',');
+  }
+  if(kind==='sparkle-burst'){
+    const filters=[];
+    for(let index=0;index<10;index++){
+      const x=((index*41+13)%91)/100;
+      const y=((index*31+17)%83)/100;
+      const pulse=`${enabled}*gt(sin(${(5.4+(index%4)*.7).toFixed(2)}*PI*${phase}+${(index*.73).toFixed(2)})\,0.28)`;
+      const color=index%3===0?'white@0.92':index%3===1?'0xDFFFF4@0.88':'0xE9C6FF@0.86';
+      filters.push(`drawbox=x='${x.toFixed(3)}*iw-6':y='${y.toFixed(3)}*ih-1':w=12:h=2:color=${color}:t=fill:enable='${pulse}'`);
+      filters.push(`drawbox=x='${x.toFixed(3)}*iw-1':y='${y.toFixed(3)}*ih-6':w=2:h=12:color=${color}:t=fill:enable='${pulse}'`);
+    }
+    return filters.join(',');
+  }
+  return '';
+}
 function timedEffectFilter(c={},width=1920,height=1080) {
   const start=Math.max(0,n(c.start,0));
   const speed=clamp(n(c.speed,1),.25,4);
@@ -197,9 +222,9 @@ function timedEffectFilter(c={},width=1920,height=1080) {
     case 'vignette-pulse':
       return `vignette=angle='PI/(4+1.4*sin(2.4*PI*${phase}))':eval=frame:${enabled},eq=brightness='-0.04*(sin(2.4*PI*${phase})+1)/2':eval=frame:${enabled}`;
     case 'sparkle-burst':
-      return `noise=alls=12:allf=t+u:${enabled},eq=brightness='0.025*(sin(6.8*PI*${phase})+1)/2':eval=frame:${enabled}`;
+      return `${generatedEffectDrawboxes('sparkle-burst',s,e,phase)},eq=brightness='0.025*(sin(6.8*PI*${phase})+1)/2':eval=frame:${enabled}`;
     case 'particle-rain':
-      return `noise=alls=20:allf=t+u:${enabled},eq=contrast=1.08:brightness=0.015:${enabled}`;
+      return `${generatedEffectDrawboxes('particle-rain',s,e,phase)},eq=contrast=1.08:brightness=0.015:${enabled}`;
     case 'negative-flash':
       return `negate=enable='between(t,${s},${e})*gt(sin(5*PI*${phase})\,0.52)',eq=contrast=1.08:${enabled}`;
     case 'bw-flash':

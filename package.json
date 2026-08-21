@@ -1,8 +1,8 @@
 {
   "name": "emx-clip-studio",
   "productName": "EMX Clip Studio",
-  "version": "1.11.3",
-  "description": "EMX Clip Studio V1.11.3 - stable scrub and transition playback with draggable animated effects",
+  "version": "1.11.4",
+  "description": "EMX Clip Studio V1.11.4 - stable playback and native generated animated effects",
   "private": true,
   "main": "electron/main.cjs",
   "type": "module",

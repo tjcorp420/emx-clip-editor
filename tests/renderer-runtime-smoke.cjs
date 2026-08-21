@@ -50,7 +50,7 @@ function finish(code, message) {
     };
   })()`);
   window.destroy();
-  assert.match(result.version, /V1\.11\.3/);
+  assert.match(result.version, /V1\.11\.4/);
   assert.equal(result.effectLane, true);
   assert.equal(result.effectCards, 15);
   assert.equal(result.effectsDraggable, true);

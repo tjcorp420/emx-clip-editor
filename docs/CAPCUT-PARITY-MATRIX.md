@@ -2,7 +2,7 @@
 
 This is a factual implementation tracker for the V1.11 roadmap, not marketing copy. “Available” means connected to the running Electron app and native export; “planned” is not a release promise. The user-designated benchmark is CapCut's [9:16 TikTok web editor](https://www.capcut.com/editor?scenario=tiktok&scale=9%3A16); because it is a JavaScript application whose surface changes over time, stable capability claims are cross-checked against CapCut's official feature documentation below.
 
-| Workflow area | Status in 1.11.3 playback/effects milestone | Evidence / next integration boundary |
+| Workflow area | Status in 1.11.4 playback/effects milestone | Evidence / next integration boundary |
 | --- | --- | --- |
 | Dense media browser | Available | Resources Media/Audio tabs, search/sort, display modes, thumbnail sizing, context actions, Ctrl/Shift multi-select, and safe batch project removal. |
 | Folder import choice | Available | A selected folder can import all supported direct children now or become the saved default directory for later selective multi-file import. Native Electron descriptors are normalized before browser-only File operations, preserving trusted native export paths. |
