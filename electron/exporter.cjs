@@ -3,6 +3,7 @@ const { spawn } = require('child_process');
 const fs = require('fs');
 const path = require('path');
 const { normalizeWatermark, watermarkRenderWidth, watermarkMargin, overlayXY } = require('./branding.cjs');
+const visualConfig = require('./visuals.json');
 
 function n(v, fallback=0) {
   const x = Number(v);
@@ -15,7 +16,7 @@ function clamp(v, lo, hi) {
 
 function projectDuration(project) {
   const ends = [];
-  for (const c of [...(project.videoClips||[]), ...(project.audioClips||[])]) {
+  for (const c of [...(project.videoClips||[]), ...(project.audioClips||[]), ...(project.overlayClips||[])]) {
     const speed = clamp(n(c.speed,1), .25, 4);
     const trimStart = Math.max(0,n(c.trimStart,0));
     const trimEnd = Math.max(trimStart+.01,n(c.trimEnd,trimStart+.01));
@@ -91,6 +92,47 @@ function audioFadeChain(c,outDur){
   if(fadeOut>0)filters.push(`afade=t=out:st=${Math.max(0,outDur-fadeOut).toFixed(6)}:d=${fadeOut.toFixed(6)}`);
   return filters;
 }
+function normalizeClipVisual(visual={}) {
+  const defaults = visualConfig.defaultClipVisual;
+  return {
+    brightness: clamp(n(visual.brightness, defaults.brightness), -.5, .5),
+    contrast: clamp(n(visual.contrast, defaults.contrast), .5, 2),
+    saturation: clamp(n(visual.saturation, defaults.saturation), 0, 2),
+    blur: clamp(n(visual.blur, defaults.blur), 0, 10),
+    hue: clamp(n(visual.hue, defaults.hue), -180, 180),
+    vignette: clamp(n(visual.vignette, defaults.vignette), 0, 1)
+  };
+}
+function combinedVisual(projectEffects, clipVisual) {
+  const global = projectEffects || {};
+  const local = normalizeClipVisual(clipVisual);
+  return {
+    brightness: clamp(n(global.brightness, 0) + local.brightness, -.9, .9),
+    contrast: clamp(n(global.contrast, 1) * local.contrast, .1, 3),
+    saturation: clamp(n(global.saturation, 1) * local.saturation, 0, 3),
+    blur: clamp(n(global.blur, 0) + local.blur, 0, 20),
+    hue: local.hue,
+    vignette: local.vignette
+  };
+}
+function videoTransitionFilters(c, outDur) {
+  const filters=[];
+  const fadeIn=clamp(n(c.transitionIn,0),0,Math.max(0,outDur-.01));
+  const fadeOut=c.transitionOut==='crossfade'?clamp(n(c.transitionDuration,.45),0,Math.max(0,outDur-.01)):0;
+  if(fadeIn>0)filters.push(`fade=t=in:st=0:d=${fadeIn.toFixed(6)}:alpha=1`);
+  if(fadeOut>0)filters.push(`fade=t=out:st=${Math.max(0,outDur-fadeOut).toFixed(6)}:d=${fadeOut.toFixed(6)}:alpha=1`);
+  return filters;
+}
+function normalizedOverlay(c={}) {
+  const defaults=visualConfig.defaultOverlay;
+  const position=visualConfig.positions.includes(c.position)?c.position:defaults.position;
+  return {
+    opacity:clamp(n(c.opacity,defaults.opacity),.1,1),
+    scale:clamp(n(c.scale,defaults.scale),.08,1),
+    position,
+    visual:normalizeClipVisual(c.visual)
+  };
+}
 function buildExportArgs(project, probeByPath, outputPath) {
   const width = Math.max(320, Math.round(n(project.export?.width,1920)));
   const height = Math.max(240, Math.round(n(project.export?.height,1080)));
@@ -99,6 +141,7 @@ function buildExportArgs(project, probeByPath, outputPath) {
   const dur = projectDuration(project);
   const videos = [...(project.videoClips||[])].sort((a,b)=>n(a.start)-n(b.start));
   const audios = [...(project.audioClips||[])].sort((a,b)=>n(a.start)-n(b.start));
+  const overlays = [...(project.overlayClips||[])].sort((a,b)=>n(a.start)-n(b.start));
 
   const inputs = [];
   const filters = [`color=c=black:s=${width}x${height}:r=${fps}:d=${dur.toFixed(6)}[base]`];
@@ -110,21 +153,22 @@ function buildExportArgs(project, probeByPath, outputPath) {
     const trimEnd = Math.max(trimStart+.01,n(c.trimEnd,trimStart+.01));
     const speed = clamp(n(c.speed,1),.25,4);
     const start = Math.max(0,n(c.start,0));
-    const brightness = clamp(n(project.effects?.brightness,0),-.9,.9);
-    const contrast = clamp(n(project.effects?.contrast,1),.1,3);
-    const saturation = clamp(n(project.effects?.saturation,1),0,3);
-    const blur = clamp(n(project.effects?.blur,0),0,20);
+    const visual = combinedVisual(project.effects, c.visual);
+    const outDur=(trimEnd-trimStart)/speed;
 
     const fx = [
       `trim=start=${trimStart}:end=${trimEnd}`,
       'setpts=PTS-STARTPTS',
       `setpts=PTS/${speed}`,
-      `eq=brightness=${brightness}:contrast=${contrast}:saturation=${saturation}`,
-      blur>0 ? `gblur=sigma=${blur}` : null,
+      `eq=brightness=${visual.brightness}:contrast=${visual.contrast}:saturation=${visual.saturation}`,
+      visual.hue!==0 ? `hue=h=${visual.hue}` : null,
+      visual.blur>0 ? `gblur=sigma=${visual.blur}` : null,
+      visual.vignette>0 ? `vignette=angle=${(1.6-visual.vignette*1.2).toFixed(6)}` : null,
       `scale=${width}:${height}:force_original_aspect_ratio=decrease`,
       `pad=${width}:${height}:(ow-iw)/2:(oh-ih)/2:black`,
       `fps=${fps}`,
-      'format=yuv420p',
+      'format=rgba',
+      ...videoTransitionFilters(c,outDur),
       `setpts=PTS+${start}/TB`
     ].filter(Boolean).join(',');
     filters.push(`[${i}:v]${fx}[vid${i}]`);
@@ -171,15 +215,50 @@ function buildExportArgs(project, probeByPath, outputPath) {
     filters.push(`${audioLabels.join('')}amix=inputs=${audioLabels.length}:normalize=0:dropout_transition=0,atrim=duration=${dur.toFixed(6)},asetpts=PTS-STARTPTS[aout]`);
   }
 
+  let composited='vbase';
+  const overlayBaseIndex=videos.length+audios.length;
+  overlays.forEach((c,index)=>{
+    const overlay=normalizedOverlay(c);
+    const trimStart=Math.max(0,n(c.trimStart,0));
+    const trimEnd=Math.max(trimStart+.01,n(c.trimEnd,trimStart+.01));
+    const speed=clamp(n(c.speed,1),.25,4);
+    const start=Math.max(0,n(c.start,0));
+    const outDur=(trimEnd-trimStart)/speed;
+    const inputIndex=overlayBaseIndex+index;
+    const overlayWidth=Math.max(1,Math.round(width*overlay.scale));
+    const position=overlayXY(overlay.position,watermarkMargin(width,height));
+    inputs.push('-loop','1','-framerate',String(fps),'-i',c.path);
+    const label=`overlay${index}`;
+    const visual=combinedVisual({brightness:0,contrast:1,saturation:1,blur:0},overlay.visual);
+    const fx=[
+      `trim=start=${trimStart}:end=${trimEnd}`,
+      'setpts=PTS-STARTPTS',
+      `setpts=PTS/${speed}`,
+      `eq=brightness=${visual.brightness}:contrast=${visual.contrast}:saturation=${visual.saturation}`,
+      visual.hue!==0 ? `hue=h=${visual.hue}` : null,
+      visual.blur>0 ? `gblur=sigma=${visual.blur}` : null,
+      visual.vignette>0 ? `vignette=angle=${(1.6-visual.vignette*1.2).toFixed(6)}` : null,
+      `scale=${overlayWidth}:-1`,
+      'format=rgba',
+      `colorchannelmixer=aa=${overlay.opacity.toFixed(3)}`,
+      `trim=duration=${outDur.toFixed(6)}`,
+      `setpts=PTS+${start}/TB`
+    ].filter(Boolean).join(',');
+    filters.push(`[${inputIndex}:v]${fx}[${label}]`);
+    const next=`overlayComp${index}`;
+    filters.push(`[${composited}][${label}]overlay=x=${position.x}:y=${position.y}:eof_action=pass:repeatlast=0:shortest=0[${next}]`);
+    composited=next;
+  });
+
 
   const watermark = normalizeWatermark(project.branding);
   const watermarkPath = String(project.branding?.assetPath || '');
-  const watermarkIndex = videos.length + audios.length;
+  const watermarkIndex = videos.length + audios.length + overlays.length;
   const watermarkWidth = watermarkRenderWidth(width);
   const watermarkPosition = overlayXY(watermark.position, watermarkMargin(width, height));
   inputs.push('-loop', '1', '-i', watermarkPath);
   filters.push(`[${watermarkIndex}:v]format=rgba,scale=${watermarkWidth}:-1,colorchannelmixer=aa=${watermark.opacity.toFixed(3)}[emxwatermark]`);
-  filters.push(`[vbase][emxwatermark]overlay=x=${watermarkPosition.x}:y=${watermarkPosition.y}:eof_action=repeat:shortest=0[vwatermarked]`);
+  filters.push(`[${composited}][emxwatermark]overlay=x=${watermarkPosition.x}:y=${watermarkPosition.y}:eof_action=repeat:shortest=0[vwatermarked]`);
   filters.push('[vwatermarked]format=yuv420p[vout]');
 
   const args = [
@@ -204,7 +283,7 @@ function buildExportArgs(project, probeByPath, outputPath) {
 
 async function validateProject(project, ffprobePath) {
   if(!project.videoClips?.length) throw new Error('No video clips are on the timeline.');
-  const all=[...(project.videoClips||[]),...(project.audioClips||[])];
+  const all=[...(project.videoClips||[]),...(project.audioClips||[]),...(project.overlayClips||[])];
   for(const c of all) {
     if(!c.path) throw new Error(`No desktop file path is available for "${c.name||'media'}". Re-import it in the desktop app.`);
     if(!fs.existsSync(c.path)) throw new Error(`Source file no longer exists: ${c.path}`);

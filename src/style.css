@@ -442,6 +442,23 @@ button:disabled:hover{
 @media(prefers-reduced-motion:reduce){.update-indicator{animation:none}.media-item,.media-overlay{transition:none}}
 
 
+/* ===== EMX V1.9 VISUAL EDITING ===== */
+.preview video,.preview #previewImage{position:relative;z-index:1}
+#previewTransitionVideo{position:absolute;inset:0;z-index:2;width:100%;height:100%;object-fit:contain;background:transparent;border-radius:12px;pointer-events:none}
+#previewImage{max-width:100%;max-height:100%;width:auto;height:auto;object-fit:contain;background:#000;border-radius:12px}
+.preview-overlay-layer{position:absolute;inset:0;z-index:5;pointer-events:none;overflow:hidden}
+.preview-overlay-item{position:absolute;display:flex;max-width:92%;max-height:92%;pointer-events:none}
+.preview-overlay-item img{display:block;max-width:100%;max-height:100%;height:auto;object-fit:contain;filter:drop-shadow(0 3px 8px rgba(0,0,0,.38))}
+.preview-overlay-item[data-position="top-left"]{left:4%;top:4%}.preview-overlay-item[data-position="top-center"]{left:50%;top:4%;transform:translateX(-50%)}.preview-overlay-item[data-position="top-right"]{right:4%;top:4%}
+.preview-overlay-item[data-position="center-left"]{left:4%;top:50%;transform:translateY(-50%)}.preview-overlay-item[data-position="center"]{left:50%;top:50%;transform:translate(-50%,-50%)}.preview-overlay-item[data-position="center-right"]{right:4%;top:50%;transform:translateY(-50%)}
+.preview-overlay-item[data-position="bottom-left"]{left:4%;bottom:4%}.preview-overlay-item[data-position="bottom-center"]{left:50%;bottom:4%;transform:translateX(-50%)}.preview-overlay-item[data-position="bottom-right"]{right:4%;bottom:4%}
+.preview-vignette{position:absolute;inset:0;z-index:4;pointer-events:none;opacity:0;background:radial-gradient(ellipse at center,transparent 42%,rgba(0,0,0,.78) 100%);transition:opacity .12s}
+.clip.overlay{background:linear-gradient(135deg,rgba(39,102,153,.90),rgba(31,45,86,.92));border-color:rgba(79,193,255,.55)}
+.clip.overlay .clip-bg{background-size:cover;background-repeat:no-repeat;opacity:.62}
+.overlay-track .track-label{color:#a9e9ff;background:rgba(72,171,255,.06)}
+#transitionHint{margin-top:6px}
+
+
 /* ===== EMX V1.7 FRIEND-READY AUDIO AI ===== */
 #aiStatus.status.good{
   position:relative;

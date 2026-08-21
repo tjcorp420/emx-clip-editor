@@ -1,5 +1,5 @@
 @echo off
-title EMX Clip Studio V1.8.2 Verification
+title EMX Clip Studio V1.9.0 Verification
 cd /d "%~dp0"
 
 where npm >nul 2>nul
@@ -67,7 +67,7 @@ if errorlevel 1 goto :fail
 
 echo.
 echo ==========================================
-echo EMX CLIP STUDIO V1.8.2 VERIFICATION PASS
+echo EMX CLIP STUDIO V1.9.0 VERIFICATION PASS
 echo ==========================================
 echo.
 echo Friend-ready Audio AI behavior:
@@ -82,7 +82,7 @@ exit /b 0
 :fail
 echo.
 echo ==========================================
-echo EMX V1.8.2 VERIFICATION FAILED
+echo EMX V1.9.0 VERIFICATION FAILED
 echo Read the first error above before building.
 echo ==========================================
 pause

@@ -1,0 +1,35 @@
+{
+  "defaultClipVisual": {
+    "brightness": 0,
+    "contrast": 1,
+    "saturation": 1,
+    "blur": 0,
+    "hue": 0,
+    "vignette": 0
+  },
+  "presets": {
+    "none": { "brightness": 0, "contrast": 1, "saturation": 1, "blur": 0, "hue": 0, "vignette": 0 },
+    "vivid": { "brightness": 0.02, "contrast": 1.16, "saturation": 1.32, "blur": 0, "hue": 0, "vignette": 0 },
+    "cinematic": { "brightness": -0.04, "contrast": 1.18, "saturation": 0.82, "blur": 0, "hue": -4, "vignette": 0.3 },
+    "mono": { "brightness": 0, "contrast": 1.08, "saturation": 0, "blur": 0, "hue": 0, "vignette": 0.12 },
+    "retro": { "brightness": 0.05, "contrast": 0.88, "saturation": 1.2, "blur": 0, "hue": -9, "vignette": 0.18 },
+    "soft": { "brightness": 0.04, "contrast": 0.94, "saturation": 1.08, "blur": 0.7, "hue": 0, "vignette": 0 }
+  },
+  "defaultOverlay": {
+    "opacity": 0.9,
+    "scale": 0.28,
+    "position": "bottom-right"
+  },
+  "positions": [
+    "top-left",
+    "top-center",
+    "top-right",
+    "center-left",
+    "center",
+    "center-right",
+    "bottom-left",
+    "bottom-center",
+    "bottom-right"
+  ],
+  "transitionTypes": ["none", "crossfade"]
+}

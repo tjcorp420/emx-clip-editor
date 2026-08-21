@@ -1,5 +1,5 @@
 @echo off
-title EMX Clip Studio V1.8.2 OFFLINE AI Builder
+title EMX Clip Studio V1.9.0 OFFLINE AI Builder
 cd /d "%~dp0"
 
 echo.

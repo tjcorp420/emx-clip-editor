@@ -3,10 +3,11 @@ import './style.css';
 import { getStemEngineStatus } from './lib/stems.js';
 import { clipDuration, clipAtTime as timelineClipAtTime, magneticStartForClips, trimLeftByDelta, trimRightByDelta, splitClipAtTime } from './lib/timelineMath.js';
 import { reconcileSelection, selectIds } from './lib/selection.js';
+import visualConfig from '../electron/visuals.json';
 
 const app=document.querySelector('#app');
 const state={
-  media:[],videoClips:[],audioClips:[],selectedMediaId:null,selectedClipId:null,
+  media:[],videoClips:[],audioClips:[],overlayClips:[],selectedMediaId:null,selectedClipId:null,
   selectedMediaIds:new Set(),selectedClipIds:new Set(),mediaSelectionAnchorId:null,clipSelectionAnchorId:null,
   playhead:0,pxPerSec:10,isPlaying:false,timelinePlaying:false,fitTimeline:true,timelinePreview:true,timelineTimer:null,activeTimelineClipId:null,previewRequestId:0,previewMuted:false,scrubbing:false,scrubPreviewTimer:null,renderBusy:false,renderStartedAt:0,
   history:[],future:[],
@@ -22,7 +23,7 @@ const uid=()=>crypto.randomUUID?.()||`${Date.now()}_${Math.random().toString(16)
 app.innerHTML=`
 <div class="app">
 <header class="topbar">
-  <div class="brand"><img class="logo" src="./emx-logo.png" onerror="this.style.display='none'" alt="EMX"><div><h1>EMX CLIP STUDIO</h1><small id="appVersionLabel">Desktop Timeline Editor • V1.8.2</small></div></div>
+  <div class="brand"><img class="logo" src="./emx-logo.png" onerror="this.style.display='none'" alt="EMX"><div><h1>EMX CLIP STUDIO</h1><small id="appVersionLabel">Desktop Timeline Editor • V1.9.0</small></div></div>
   <div class="top-actions">
     <button class="btn undo-last" id="undoLastBtn" disabled>↶ UNDO LAST</button><button class="btn" id="redoBtn" disabled>↷ Redo</button><button class="btn" id="newProject">New</button>
     <button class="btn" id="openFolder">📁 Clips Folder</button>
@@ -30,7 +31,7 @@ app.innerHTML=`
     <button class="btn" id="settingsTop">⚙ Settings</button>
     <button class="btn update-indicator" id="updateIndicator" hidden>UPDATE AVAILABLE</button>
     <button class="btn primary" id="exportBtn">EXPORT MP4</button>
-    <input id="filePicker" type="file" accept="video/*,audio/*" multiple hidden>
+    <input id="filePicker" type="file" accept="video/*,audio/*,image/png,image/jpeg,image/webp,image/gif" multiple hidden>
   </div>
   <div class="top-task" id="topTask" aria-live="polite">
     <span class="top-task-label" id="topTaskLabel">READY</span>
@@ -43,7 +44,7 @@ app.innerHTML=`
   <div class="panel-title"><span>RESOURCES</span><span id="mediaCount">0</span></div>
   <div class="resource-tabs"><button class="resource-tab active" data-resource="media">Media</button><button class="resource-tab" data-resource="audio">Audio</button></div>
   <div class="media-toolbar">
-    <div class="media-filter-row"><button class="btn mini" id="filterAll">All</button><button class="btn mini" id="filterVideo">Video</button><button class="btn mini" id="filterAudio">Audio</button></div>
+    <div class="media-filter-row"><button class="btn mini" id="filterAll">All</button><button class="btn mini" id="filterVideo">Video</button><button class="btn mini" id="filterAudio">Audio</button><button class="btn mini" id="filterImage">Image</button></div>
     <input id="mediaSearch" class="media-search" type="search" placeholder="Search media" aria-label="Search media">
     <div class="media-view-row"><button class="btn mini active" id="mediaGrid" title="Grid view">▦</button><button class="btn mini" id="mediaCompact" title="Compact grid view">▦−</button><button class="btn mini" id="mediaListView" title="List view">☷</button><select id="mediaSort" aria-label="Sort media"><option value="date">Newest</option><option value="name">Name</option><option value="duration">Duration</option></select></div>
     <label class="media-size">Thumbnail <input id="mediaThumbSize" type="range" min="100" max="200" step="4" value="132"></label>
@@ -56,7 +57,11 @@ app.innerHTML=`
   <div class="panel preview" id="previewPanel">
     <div class="preview-empty" id="previewEmpty"><b>Drop clips into EMX Clip Studio</b><br>Import video/audio or choose a clips folder.</div>
     <video id="previewVideo" playsinline style="display:none"></video>
+    <video id="previewTransitionVideo" playsinline muted style="display:none"></video>
     <audio id="previewAudio" style="display:none"></audio>
+    <img id="previewImage" alt="Selected image preview" style="display:none">
+    <div id="previewOverlayLayer" class="preview-overlay-layer" aria-hidden="true"></div>
+    <div id="previewVignette" class="preview-vignette" aria-hidden="true"></div>
     <div id="audioTimelineVisual" class="audio-timeline-visual" style="display:none">
       <div class="audio-orb">🎵</div>
       <div class="audio-visual-title" id="audioVisualTitle">AUDIO TIMELINE</div>
@@ -107,9 +112,29 @@ app.innerHTML=`
         <div class="field"><label>Audio Fade Out <span id="fadeOutVal">0.00s</span></label><input id="fadeOut" type="range" min="0" max="5" step=".05" value="0"></div>
       </div>
       <div class="group"><h3>CLIP ACTIONS</h3><div class="actions"><button class="btn mini" id="duplicateClip">Duplicate</button><button class="btn mini danger" id="deleteClip">Delete</button></div></div>
+      <div class="group" id="overlayLayoutGroup" hidden><h3>IMAGE OVERLAY LAYOUT</h3>
+        <div class="field"><label>Position</label><select id="overlayPosition"><option value="top-left">Top Left</option><option value="top-center">Top Center</option><option value="top-right">Top Right</option><option value="center-left">Center Left</option><option value="center">Center</option><option value="center-right">Center Right</option><option value="bottom-left">Bottom Left</option><option value="bottom-center">Bottom Center</option><option value="bottom-right">Bottom Right</option></select></div>
+        <div class="field"><label>Opacity <span id="overlayOpacityVal">90%</span></label><input id="overlayOpacity" type="range" min=".1" max="1" step=".01" value=".9"></div>
+        <div class="field"><label>Scale <span id="overlayScaleVal">28%</span></label><input id="overlayScale" type="range" min=".08" max="1" step=".01" value=".28"></div>
+      </div>
+      <div class="group" id="transitionGroup" hidden><h3>TRANSITION OUT</h3>
+        <div class="field"><label>Style</label><select id="transitionOut"><option value="none">None</option><option value="crossfade">Cross Fade</option></select></div>
+        <div class="field"><label>Duration <span id="transitionDurationVal">0.45s</span></label><input id="transitionDuration" type="range" min=".1" max="2" step=".05" value=".45"></div>
+        <div class="status" id="transitionHint">Cross Fade overlaps the next video clip and renders the blend in the preview and MP4 export.</div>
+      </div>
     </div>
 
     <div id="insEffects" style="display:none">
+      <div class="group"><h3>SELECTED CLIP VISUALS</h3>
+        <div id="clipVisualHint" class="status warn">Select a video or image overlay on the timeline to apply a visual preset or precise adjustments.</div>
+        <div class="field"><label>Preset</label><select id="clipVisualPreset"><option value="custom" disabled>Custom adjustments</option><option value="none">None / Reset</option><option value="vivid">Vivid</option><option value="cinematic">Cinematic</option><option value="mono">Monochrome</option><option value="retro">Retro</option><option value="soft">Soft Glow</option></select></div>
+        <div class="field"><label>Clip Brightness <span id="clipBrightnessVal">0.00</span></label><input id="clipBrightness" type="range" min="-.5" max=".5" step=".01" value="0"></div>
+        <div class="field"><label>Clip Contrast <span id="clipContrastVal">1.00</span></label><input id="clipContrast" type="range" min=".5" max="2" step=".01" value="1"></div>
+        <div class="field"><label>Clip Saturation <span id="clipSaturationVal">1.00</span></label><input id="clipSaturation" type="range" min="0" max="2" step=".01" value="1"></div>
+        <div class="field"><label>Hue <span id="clipHueVal">0°</span></label><input id="clipHue" type="range" min="-180" max="180" step="1" value="0"></div>
+        <div class="field"><label>Soft Blur <span id="clipBlurVal">0.0</span></label><input id="clipBlur" type="range" min="0" max="10" step=".1" value="0"></div>
+        <div class="field"><label>Vignette <span id="clipVignetteVal">0%</span></label><input id="clipVignette" type="range" min="0" max="1" step=".01" value="0"></div>
+      </div>
       <div class="group"><h3>GLOBAL VIDEO EFFECTS</h3>
         <div class="field"><label>Brightness <span id="brightnessVal">0.00</span></label><input id="brightness" type="range" min="-.5" max=".5" step=".01" value="0"></div>
         <div class="field"><label>Contrast <span id="contrastVal">1.00</span></label><input id="contrast" type="range" min=".5" max="2" step=".01" value="1"></div>
@@ -213,6 +238,7 @@ app.innerHTML=`
     <button class="btn mini" id="undoBtn" disabled>↶ Undo</button>
     <button class="btn mini" id="addVideoTrack">＋ Video Clip</button>
     <button class="btn mini" id="addAudioTrack">＋ Audio Clip</button>
+    <button class="btn mini" id="addOverlayTrack">＋ Image Overlay</button>
     <button class="btn mini" id="splitHead">✂ Split</button>
     <button class="btn mini primary" id="fitTimelineBtn">↔ Fit Project</button><button class="btn mini" id="closeGapsBtn">⇥ Close Gaps</button>
     <span class="zoom">Zoom <input id="zoom" type="range" min="4" max="140" step="2" value="10"></span>
@@ -222,6 +248,7 @@ app.innerHTML=`
       <div class="ruler" id="ruler"></div>
       <div class="track"><div class="track-label">VIDEO</div><div class="track-lane" id="videoLane"></div></div>
       <div class="track"><div class="track-label">AUDIO</div><div class="track-lane" id="audioLane"></div></div>
+      <div class="track overlay-track"><div class="track-label">OVERLAYS</div><div class="track-lane" id="overlayLane"></div></div>
       <div class="playhead" id="playhead"></div>
     </div>
   </div>
@@ -289,7 +316,7 @@ app.innerHTML=`
 
 const $=id=>document.getElementById(id);
 const toast=$('toast');
-const v=$('previewVideo'),a=$('previewAudio');
+const v=$('previewVideo'),transitionVideo=$('previewTransitionVideo'),a=$('previewAudio'),previewImage=$('previewImage');
 
 function notify(msg,type='info',title='EMX Clip Studio'){
   const icons={info:'⚡',success:'✓',error:'✕',warn:'!',loading:'◌'};
@@ -329,6 +356,14 @@ function setButtonBusy(button,busy,label='WORKING...'){
 function fmt(s){s=Math.max(0,Number(s)||0);const m=Math.floor(s/60),sec=(s%60).toFixed(2).padStart(5,'0');return `${String(m).padStart(2,'0')}:${sec}`}
 
 async function probeMedia(source,mime){
+  if(String(mime||'').startsWith('image/')){
+    return new Promise(resolve=>{
+      const image=new Image();
+      image.onload=()=>resolve(5);
+      image.onerror=()=>resolve(5);
+      image.src=source;
+    });
+  }
   return new Promise(resolve=>{
     const el=document.createElement(String(mime||'').startsWith('audio')?'audio':'video');
     el.preload='metadata';
@@ -339,6 +374,7 @@ async function probeMedia(source,mime){
 }
 
 async function makeThumbnail(source,mime,duration){
+  if(String(mime||'').startsWith('image/')) return source;
   if(!String(mime||'').startsWith('video/')) return null;
   return new Promise(resolve=>{
     const vid=document.createElement('video');vid.muted=true;vid.playsInline=true;vid.preload='metadata';
@@ -389,10 +425,31 @@ function waveformSvg(values,color='#39ff14'){
 }
 
 function mediaKind(mime,name=''){
+  if(String(mime||'').startsWith('image/')||/\.(png|jpe?g|webp|gif)$/i.test(name))return 'image';
   if(String(mime||'').startsWith('audio/'))return 'audio';
   if(String(mime||'').startsWith('video/'))return 'video';
   return /\.(mp3|wav|m4a|aac|flac|ogg|opus)$/i.test(name)?'audio':'video';
 }
+
+const defaultClipVisual=Object.freeze({...visualConfig.defaultClipVisual});
+const defaultOverlay=Object.freeze({...visualConfig.defaultOverlay});
+function bounded(value,minimum,maximum,fallback){
+  const n=Number(value);
+  return Number.isFinite(n)?Math.max(minimum,Math.min(maximum,n)):fallback;
+}
+function normalizeClipVisual(visual={}){
+  return {
+    brightness:bounded(visual.brightness,-.5,.5,defaultClipVisual.brightness),
+    contrast:bounded(visual.contrast,.5,2,defaultClipVisual.contrast),
+    saturation:bounded(visual.saturation,0,2,defaultClipVisual.saturation),
+    blur:bounded(visual.blur,0,10,defaultClipVisual.blur),
+    hue:bounded(visual.hue,-180,180,defaultClipVisual.hue),
+    vignette:bounded(visual.vignette,0,1,defaultClipVisual.vignette)
+  };
+}
+function clipVisual(clip){return normalizeClipVisual(clip?.visual)}
+function trackAcceptsMedia(track,media){return track==='overlay'?media?.type==='image':media?.type===track}
+function clipCollectionForType(type){return type==='audio'?state.audioClips:type==='overlay'?state.overlayClips:state.videoClips}
 
 async function addMediaItems(items){
   let count=0,added=[];
@@ -403,7 +460,7 @@ async function addMediaItems(items){
     const name=String(item?.name||file?.name||'Imported media');
     const type=mediaKind(mime,name);
     if(!file&&!item?.url)continue;
-    if(type!=='video'&&type!=='audio')continue;
+    if(!['video','audio','image'].includes(type))continue;
     const url=item?.url||URL.createObjectURL(file);
     const duration=await probeMedia(url,mime),thumb=await makeThumbnail(url,mime,duration),waveform=file?await makeWaveform(file):null;
     let nativePath=item?.nativePath||'';
@@ -441,7 +498,7 @@ function visibleMedia(){
 
 function orderedMediaIds(){return state.media.map(media=>media.id)}
 function orderedTimelineClipIds(){
-  return [...state.videoClips,...state.audioClips]
+  return [...state.videoClips,...state.audioClips,...state.overlayClips]
     .sort((left,right)=>left.start-right.start||left.type.localeCompare(right.type)||left.id.localeCompare(right.id))
     .map(clip=>clip.id);
 }
@@ -451,7 +508,7 @@ function selectedMediaItems(){
 }
 function selectedTimelineClips(){
   state.selectedClipIds=reconcileSelection(state.selectedClipIds,orderedTimelineClipIds());
-  return [...state.videoClips,...state.audioClips].filter(clip=>state.selectedClipIds.has(clip.id));
+  return [...state.videoClips,...state.audioClips,...state.overlayClips].filter(clip=>state.selectedClipIds.has(clip.id));
 }
 function reconcileActiveSelections(){
   const media=selectedMediaItems();
@@ -500,10 +557,10 @@ function renderMedia(){
     d.dataset.mediaId=m.id;
     d.dataset.mediaType=m.type;
     d.title='Drag this media directly onto the matching timeline track. Double-click to preview.';
-    const visual=m.type==='video'&&m.thumb?`<img src="${m.thumb}" alt="">`:m.waveform?`<div class="audio-thumb waveform-thumb" style="background-image:url('${waveformSvg(m.waveform)}')"></div>`:`<div class="audio-thumb">🎵</div>`;
+    const visual=(m.type==='video'||m.type==='image')&&m.thumb?`<img src="${m.thumb}" alt="">`:m.waveform?`<div class="audio-thumb waveform-thumb" style="background-image:url('${waveformSvg(m.waveform)}')"></div>`:`<div class="audio-thumb">🎵</div>`;
     d.innerHTML=`
       <div class="thumb-wrap">${visual}<div class="media-overlay"><button class="btn mini" data-preview="${m.id}" title="Preview">▶</button><button class="btn mini" data-add="${m.id}" data-track="${m.type}" title="Add to timeline">＋</button><button class="btn mini" data-menu="${m.id}" title="More actions">•••</button></div></div>
-      <div class="media-copy"><div class="media-name">${m.type==='video'?'🎬':'🎵'} ${m.name}</div><div class="media-meta">${m.type.toUpperCase()} • ${fmt(m.duration)}</div></div>`;
+      <div class="media-copy"><div class="media-name">${m.type==='video'?'🎬':m.type==='image'?'🖼️':'🎵'} ${m.name}</div><div class="media-meta">${m.type.toUpperCase()} • ${m.type==='image'?'5.00s overlay default':fmt(m.duration)}</div></div>`;
     list.appendChild(d);
     d.addEventListener('dragstart',ev=>{
       ev.dataTransfer.effectAllowed='copy';
@@ -531,6 +588,7 @@ function captureEditState(){
   return {
     videoClips:state.videoClips.map(c=>({...c})),
     audioClips:state.audioClips.map(c=>({...c})),
+    overlayClips:state.overlayClips.map(c=>({...c,visual:{...clipVisual(c)}})),
     effects:{...state.effects},
     branding:{...state.branding}
   };
@@ -550,6 +608,7 @@ function restoreEditState(snapshot){
   stopTimelinePlayback();
   state.videoClips=snapshot.videoClips.map(c=>({...c}));
   state.audioClips=snapshot.audioClips.map(c=>({...c}));
+  state.overlayClips=(snapshot.overlayClips||[]).map(c=>({...c,visual:clipVisual(c)}));
   state.effects={...snapshot.effects};
   state.branding={...snapshot.branding};
   state.selectedClipId=null;state.selectedClipIds=new Set();state.clipSelectionAnchorId=null;
@@ -583,7 +642,14 @@ function activePreview(){return v.style.display!=='none'?v:a}
 async function selectMedia(id,autoplay=true,selectionOptions={}){
   setMediaSelection(id,selectionOptions);state.timelinePreview=false;state.activeTimelineClipId=null;$('timelineModeBadge').style.display='none';renderMedia();updateInspector();
   const m=state.media.find(x=>x.id===id);if(!m)return;
-  v.pause();a.pause();v.style.display='none';a.style.display='none';$('previewEmpty').style.display='none';
+  v.pause();transitionVideo.pause();a.pause();v.style.display='none';transitionVideo.style.display='none';a.style.display='none';previewImage.style.display='none';$('previewEmpty').style.display='none';
+  if(m.type==='image'){
+    previewImage.src=m.url;previewImage.style.display='block';previewImage.style.filter='none';
+    $('previewBadge').textContent=m.name;
+    $('scrub').max=m.duration||5;$('scrub').value=0;$('timeReadout').textContent=`00:00.00 / ${fmt(m.duration||5)}`;
+    updateOverlayPreview();
+    return;
+  }
   const el=m.type==='video'?v:a;el.src=m.url;el.style.display=m.type==='video'?'block':'block';el.volume=+$('masterVolume').value;
   $('previewBadge').textContent=m.name;
   const onMeta=()=>{
@@ -629,18 +695,25 @@ function updateTransport(){
 });
 
 function makeTimelineClip(media,track,start){
-  return {id:uid(),mediaId:media.id,file:media.file,nativePath:media.nativePath||'',name:media.name,type:track,start,trimStart:0,trimEnd:media.duration,speed:1,volume:state.settings.defaultVolume,fadeIn:0,fadeOut:0,duration:media.duration,thumb:media.thumb,waveform:media.waveform};
+  const isOverlay=track==='overlay';
+  const duration=isOverlay?5:media.duration;
+  return {
+    id:uid(),mediaId:media.id,file:media.file,nativePath:media.nativePath||'',name:media.name,type:track,sourceType:media.type,
+    start,trimStart:0,trimEnd:duration,speed:1,volume:state.settings.defaultVolume,fadeIn:0,fadeOut:0,duration,thumb:media.thumb,waveform:media.waveform,
+    visual:{...defaultClipVisual},opacity:isOverlay?defaultOverlay.opacity:1,scale:isOverlay?defaultOverlay.scale:1,
+    position:isOverlay?defaultOverlay.position:'center',transitionOut:'none',transitionDuration:.45,transitionIn:0
+  };
 }
 function addMediaItemsToTimeline(mediaItems,forcedTrack=null,explicitStart=null){
-  const items=(mediaItems||[]).filter(media=>media&&(forcedTrack?media.type===forcedTrack:true));
+  const items=(mediaItems||[]).filter(media=>media&&(forcedTrack?trackAcceptsMedia(forcedTrack,media):['video','audio','image'].includes(media.type)));
   if(!items.length)return notify(forcedTrack?`Select ${forcedTrack} media first.`:'Select one or more media items first.','warn');
   pushHistory(items.length===1?`Add ${forcedTrack||items[0].type} clip`:`Add ${items.length} selected clips`);
   stopTimelinePlayback();
   const created=[];
-  for(const track of ['video','audio']){
-    const trackItems=items.filter(media=>media.type===track);
+  for(const track of ['video','audio','overlay']){
+    const trackItems=items.filter(media=>trackAcceptsMedia(track,media));
     if(!trackItems.length)continue;
-    const arr=track==='audio'?state.audioClips:state.videoClips;
+    const arr=clipCollectionForType(track);
     let cursor=0;
     if(explicitStart!==null&&Number.isFinite(explicitStart)&&trackItems.length===1){
       cursor=Math.max(0,explicitStart);
@@ -668,7 +741,7 @@ function addClip(mediaId,track,explicitStart=null){
   if(media)addMediaItemsToTimeline([media],track,explicitStart);
 }
 function addSelectedMediaToTimeline(){addMediaItemsToTimeline(selectedMediaItems())}
-function findClip(id){return state.videoClips.find(c=>c.id===id)||state.audioClips.find(c=>c.id===id)}
+function findClip(id){return state.videoClips.find(c=>c.id===id)||state.audioClips.find(c=>c.id===id)||state.overlayClips.find(c=>c.id===id)}
 function clipTimelineDuration(c){return clipDuration(c)}
 function selectClip(id,selectionOptions={}){
   setClipSelection(id,selectionOptions);
@@ -680,7 +753,8 @@ function projectEnd(){
   return Math.max(
     0,
     ...state.videoClips.map(c=>c.start+clipTimelineDuration(c)),
-    ...state.audioClips.map(c=>c.start+clipTimelineDuration(c))
+    ...state.audioClips.map(c=>c.start+clipTimelineDuration(c)),
+    ...state.overlayClips.map(c=>c.start+clipTimelineDuration(c))
   );
 }
 
@@ -727,13 +801,16 @@ function magneticStart(candidate,movingClip,trackClips){
   return magneticStartForClips(candidate,movingClip,trackClips,state.settings.snap,state.pxPerSec);
 }
 
-function renderLane(lane,clips,audio=false){
+function renderLane(lane,clips,trackType='video'){
+  const audio=trackType==='audio';
+  const overlay=trackType==='overlay';
   lane.innerHTML='';
   clips.forEach(c=>{
-    const d=document.createElement('div');d.className=`clip ${audio?'audio':''} ${state.selectedClipIds.has(c.id)?'selected':''}`;d.dataset.clip=c.id;
+    const d=document.createElement('div');d.className=`clip ${audio?'audio':''} ${overlay?'overlay':''} ${state.selectedClipIds.has(c.id)?'selected':''}`;d.dataset.clip=c.id;
     d.style.left=`${c.start*state.pxPerSec}px`;d.style.width=`${Math.max(48,clipTimelineDuration(c)*state.pxPerSec)}px`;
     const bg=audio&&c.waveform?waveformSvg(c.waveform):c.thumb;
-    d.innerHTML=`<div class="clip-bg" ${bg?`style="background-image:url('${bg}')"`:''}></div><div class="clip-shade"></div><div class="trim-handle left" title="Drag left/right to trim start"><span>‹</span></div><div class="trim-handle right" title="Drag left/right to trim end"><span>›</span></div><div class="clip-title">${c.name}</div><div class="clip-sub">${fmt(c.trimStart)} → ${fmt(c.trimEnd)} • ${c.speed.toFixed(2)}×</div>`;
+    const transition=c.transitionOut==='crossfade'?` • ↔ ${Number(c.transitionDuration||.45).toFixed(2)}s`:'';
+    d.innerHTML=`<div class="clip-bg" ${bg?`style="background-image:url('${bg}')"`:''}></div><div class="clip-shade"></div><div class="trim-handle left" title="Drag left/right to trim start"><span>‹</span></div><div class="trim-handle right" title="Drag left/right to trim end"><span>›</span></div><div class="clip-title">${overlay?'🖼️ ':''}${c.name}</div><div class="clip-sub">${fmt(c.trimStart)} → ${fmt(c.trimEnd)}${overlay?` • ${Math.round((c.opacity??1)*100)}%`: ` • ${c.speed.toFixed(2)}×${transition}`}</div>`;
     lane.appendChild(d);
     let sx=0,orig=0,dragMoved=false;
     d.addEventListener('pointerdown',e=>{
@@ -761,7 +838,7 @@ function renderLane(lane,clips,audio=false){
       if(!d.hasPointerCapture(e.pointerId))return;
       try{d.releasePointerCapture(e.pointerId)}catch{}
       if(dragMoved){
-        const arr=audio?state.audioClips:state.videoClips;
+        const arr=clipCollectionForType(trackType);
         arr.sort((a,b)=>a.start-b.start);
         renderTimeline();
         previewTimelineAt(state.playhead,false);
@@ -775,7 +852,7 @@ function renderLane(lane,clips,audio=false){
       d.style.left=`${c.start*state.pxPerSec}px`;
       d.style.width=`${Math.max(48,clipTimelineDuration(c)*state.pxPerSec)}px`;
       const sub=d.querySelector('.clip-sub');
-      if(sub)sub.textContent=`${fmt(c.trimStart)} → ${fmt(c.trimEnd)} • ${c.speed.toFixed(2)}×`;
+      if(sub)sub.textContent=`${fmt(c.trimStart)} → ${fmt(c.trimEnd)}${overlay?` • ${Math.round((c.opacity??1)*100)}%`:` • ${c.speed.toFixed(2)}×${c.transitionOut==='crossfade'?` • ↔ ${Number(c.transitionDuration||.45).toFixed(2)}s`:''}`}`;
     }
 
     leftHandle.addEventListener('pointerdown',e=>{
@@ -841,9 +918,38 @@ function renderTimeline(allowFit=true){
     state.pxPerSec=Math.max(6,Math.min(140,(usable-12)/fittedHorizon()));
   }
   renderRuler();
-  renderLane($('videoLane'),state.videoClips,false);
-  renderLane($('audioLane'),state.audioClips,true);
+  renderLane($('videoLane'),state.videoClips,'video');
+  renderLane($('audioLane'),state.audioClips,'audio');
+  renderLane($('overlayLane'),state.overlayClips,'overlay');
   renderPlayhead();
+}
+
+function selectedVisualClips(){return selectedTimelineClips().filter(clip=>clip.type==='video'||clip.type==='overlay')}
+function matchingVisualPreset(visual){
+  const fields=['brightness','contrast','saturation','blur','hue','vignette'];
+  return Object.entries(visualConfig.presets).find(([,preset])=>fields.every(field=>Math.abs((visual[field]??0)-(preset[field]??0))<.005))?.[0]||'custom';
+}
+function updateClipVisualControls(){
+  const clips=selectedVisualClips();
+  const primary=clips.find(clip=>clip.id===state.selectedClipId)||clips.at(-1)||null;
+  const controls=['clipVisualPreset','clipBrightness','clipContrast','clipSaturation','clipHue','clipBlur','clipVignette'];
+  controls.forEach(id=>$(id).disabled=!primary);
+  const hint=$('clipVisualHint');
+  if(!primary){
+    hint.className='status warn';
+    hint.textContent='Select a video or image overlay on the timeline to apply a visual preset or precise adjustments.';
+    return;
+  }
+  hint.className='status good';
+  hint.textContent=clips.length>1?`${clips.length} visual clips selected. Presets and adjustments apply to all selected visual clips.`:`Editing visual adjustments for ${primary.type==='overlay'?'this image overlay':'this video clip'}.`;
+  const visual=clipVisual(primary);
+  $('clipVisualPreset').value=matchingVisualPreset(visual);
+  $('clipBrightness').value=visual.brightness;$('clipBrightnessVal').textContent=visual.brightness.toFixed(2);
+  $('clipContrast').value=visual.contrast;$('clipContrastVal').textContent=visual.contrast.toFixed(2);
+  $('clipSaturation').value=visual.saturation;$('clipSaturationVal').textContent=visual.saturation.toFixed(2);
+  $('clipHue').value=visual.hue;$('clipHueVal').textContent=`${visual.hue.toFixed(0)}°`;
+  $('clipBlur').value=visual.blur;$('clipBlurVal').textContent=visual.blur.toFixed(1);
+  $('clipVignette').value=visual.vignette;$('clipVignetteVal').textContent=`${Math.round(visual.vignette*100)}%`;
 }
 
 function updateInspector(){
@@ -856,6 +962,11 @@ function updateInspector(){
   const timelineOnly=['clipStart','trimIn','trimOut','speed','volume','fadeIn','fadeOut','duplicateClip','deleteClip'];
   timelineOnly.forEach(id=>{ const el=$(id); if(el)el.disabled=!c; });
   ['clipStart','trimIn','trimOut','duplicateClip'].forEach(id=>$(id).disabled=!c||multiple);
+  $('overlayLayoutGroup').hidden=!c||c.type!=='overlay'||multiple;
+  $('transitionGroup').hidden=!c||c.type!=='video'||multiple;
+  ['overlayPosition','overlayOpacity','overlayScale'].forEach(id=>$(id).disabled=!c||c.type!=='overlay'||multiple);
+  ['transitionOut','transitionDuration'].forEach(id=>$(id).disabled=!c||c.type!=='video'||multiple);
+  updateClipVisualControls();
   $('clipHint').style.display=c?'none':'block';
   if(multiple){
     $('clipHint').style.display='block';
@@ -888,6 +999,15 @@ function updateInspector(){
   $('trimOutVal').textContent=fmt(c.trimEnd);
   $('speedVal').textContent=c.speed.toFixed(2)+'×';
   $('volumeVal').textContent=Math.round(c.volume*100)+'%';$('fadeInVal').textContent=(c.fadeIn||0).toFixed(2)+'s';$('fadeOutVal').textContent=(c.fadeOut||0).toFixed(2)+'s';
+  if(c.type==='overlay'){
+    $('overlayPosition').value=visualConfig.positions.includes(c.position)?c.position:defaultOverlay.position;
+    $('overlayOpacity').value=bounded(c.opacity,.1,1,defaultOverlay.opacity);$('overlayOpacityVal').textContent=`${Math.round(bounded(c.opacity,.1,1,defaultOverlay.opacity)*100)}%`;
+    $('overlayScale').value=bounded(c.scale,.08,1,defaultOverlay.scale);$('overlayScaleVal').textContent=`${Math.round(bounded(c.scale,.08,1,defaultOverlay.scale)*100)}%`;
+  }
+  if(c.type==='video'){
+    $('transitionOut').value=visualConfig.transitionTypes.includes(c.transitionOut)?c.transitionOut:'none';
+    $('transitionDuration').value=bounded(c.transitionDuration,.1,2,.45);$('transitionDurationVal').textContent=`${bounded(c.transitionDuration,.1,2,.45).toFixed(2)}s`;
+  }
 }
 function bindRange(id,fn){$(id).addEventListener('input',e=>fn(+e.target.value))}
 function inspectorPrimaryClip(){return selectedTimelineClips().find(clip=>clip.id===state.selectedClipId)||null}
@@ -906,7 +1026,10 @@ function beginInspectorHistory(label){
 function endInspectorHistory(controlId){delete $(controlId).dataset.editing}
 [
   ['clipStart','Move clip'],['trimIn','Trim clip start'],['trimOut','Trim clip end'],['speed','Change clip speed'],
-  ['volume','Change clip volume'],['fadeIn','Change fade in'],['fadeOut','Change fade out']
+  ['volume','Change clip volume'],['fadeIn','Change fade in'],['fadeOut','Change fade out'],
+  ['clipBrightness','Adjust clip brightness'],['clipContrast','Adjust clip contrast'],['clipSaturation','Adjust clip saturation'],
+  ['clipHue','Adjust clip hue'],['clipBlur','Adjust clip blur'],['clipVignette','Adjust clip vignette'],
+  ['overlayOpacity','Change overlay opacity'],['overlayScale','Change overlay scale'],['transitionDuration','Change transition duration']
 ].forEach(([controlId,name])=>{
   $(controlId).addEventListener('pointerdown',()=>beginInspectorHistory({controlId,name}));
   $(controlId).addEventListener('change',()=>endInspectorHistory(controlId));
@@ -918,6 +1041,88 @@ bindRange('speed',x=>{const clips=selectedTimelineClips();if(!clips.length)retur
 bindRange('volume',x=>{const clips=selectedTimelineClips();if(!clips.length)return;clips.forEach(c=>c.volume=x);updateInspector();if(state.timelinePreview)previewTimelineAt(state.playhead,state.timelinePlaying)});
 bindRange('fadeIn',x=>{const clips=selectedTimelineClips();if(!clips.length)return;clips.forEach(c=>c.fadeIn=Math.min(x,clipTimelineDuration(c)));updateInspector();if(state.timelinePreview)previewTimelineAt(state.playhead,state.timelinePlaying)});
 bindRange('fadeOut',x=>{const clips=selectedTimelineClips();if(!clips.length)return;clips.forEach(c=>c.fadeOut=Math.min(x,clipTimelineDuration(c)));updateInspector();if(state.timelinePreview)previewTimelineAt(state.playhead,state.timelinePlaying)});
+
+function updateSelectedVisuals(mutator){
+  const clips=selectedVisualClips();
+  if(!clips.length)return;
+  clips.forEach(clip=>{clip.visual=clipVisual(clip);mutator(clip.visual,clip)});
+  updateClipVisualControls();
+  renderTimeline();
+  if(state.timelinePreview)previewTimelineAt(state.playhead,state.timelinePlaying);
+}
+function updateVisualRange(id,valueKey,formatter=x=>String(x)){
+  bindRange(id,value=>{
+    updateSelectedVisuals(visual=>{visual[valueKey]=value});
+    $(`${id}Val`).textContent=formatter(value);
+  });
+}
+$('clipVisualPreset').onchange=e=>{
+  const preset=visualConfig.presets[e.target.value];
+  if(!preset)return;
+  pushHistory(`Apply ${e.target.selectedOptions[0]?.textContent||'visual'} preset`);
+  updateSelectedVisuals(visual=>Object.assign(visual,preset));
+};
+updateVisualRange('clipBrightness','brightness',value=>value.toFixed(2));
+updateVisualRange('clipContrast','contrast',value=>value.toFixed(2));
+updateVisualRange('clipSaturation','saturation',value=>value.toFixed(2));
+updateVisualRange('clipHue','hue',value=>`${value.toFixed(0)}°`);
+updateVisualRange('clipBlur','blur',value=>value.toFixed(1));
+updateVisualRange('clipVignette','vignette',value=>`${Math.round(value*100)}%`);
+
+function selectedOverlayClips(){return selectedTimelineClips().filter(clip=>clip.type==='overlay')}
+function updateSelectedOverlays(mutator){
+  const clips=selectedOverlayClips();
+  if(!clips.length)return;
+  clips.forEach(mutator);
+  renderTimeline();
+  updateInspector();
+  updateOverlayPreview();
+}
+$('overlayPosition').onchange=e=>{pushHistory('Move image overlay');updateSelectedOverlays(clip=>{clip.position=e.target.value})};
+bindRange('overlayOpacity',value=>updateSelectedOverlays(clip=>{clip.opacity=value}));
+bindRange('overlayScale',value=>updateSelectedOverlays(clip=>{clip.scale=value}));
+
+function nextVideoClip(clip){
+  const ordered=sortedVideoClips();
+  return ordered.slice(ordered.findIndex(item=>item.id===clip.id)+1).find(item=>item.id!==clip.id)||null;
+}
+function configureCrossFade(clip,requestedType=clip.transitionOut){
+  const next=nextVideoClip(clip);
+  if(requestedType!=='crossfade'){
+    if(next&&next.transitionIn===clip.transitionDuration)next.transitionIn=0;
+    clip.transitionOut='none';
+    return true;
+  }
+  if(!next){
+    clip.transitionOut='none';
+    notify('Cross Fade needs another video clip after the selected clip.','warn');
+    return false;
+  }
+  const duration=Math.min(
+    bounded(clip.transitionDuration,.1,2,.45),
+    Math.max(.1,clipTimelineDuration(clip)-.05),
+    Math.max(.1,clipTimelineDuration(next)-.05)
+  );
+  clip.transitionOut='crossfade';
+  clip.transitionDuration=duration;
+  next.transitionIn=duration;
+  next.start=Math.max(0,clip.start+clipTimelineDuration(clip)-duration);
+  state.videoClips.sort((left,right)=>left.start-right.start);
+  return true;
+}
+$('transitionOut').onchange=e=>{
+  const clip=inspectorPrimaryClip();if(!clip||clip.type!=='video')return;
+  pushHistory(e.target.value==='crossfade'?'Create cross fade':'Remove transition');
+  configureCrossFade(clip,e.target.value);
+  refreshTimelineAfterInspectorEdit();
+};
+bindRange('transitionDuration',value=>{
+  const clip=inspectorPrimaryClip();if(!clip||clip.type!=='video')return;
+  clip.transitionDuration=value;
+  if(clip.transitionOut==='crossfade')configureCrossFade(clip,'crossfade');
+  $('transitionDurationVal').textContent=`${clip.transitionDuration.toFixed(2)}s`;
+  refreshTimelineAfterInspectorEdit();
+});
 bindRange('brightness',x=>{state.effects.brightness=x;$('brightnessVal').textContent=x.toFixed(2);applyPreviewFx()});
 bindRange('contrast',x=>{state.effects.contrast=x;$('contrastVal').textContent=x.toFixed(2);applyPreviewFx()});
 bindRange('saturation',x=>{state.effects.saturation=x;$('saturationVal').textContent=x.toFixed(2);applyPreviewFx()});
@@ -980,7 +1185,12 @@ $('watermarkOpacity').onchange=()=>pushHistory('Watermark opacity');
 $('watermarkPosition').onchange=e=>setBranding(b=>b.position=e.target.value);
 window.addEventListener('resize',updateWatermarkPreview);
 
-function applyPreviewFx(){v.style.filter=`brightness(${1+state.effects.brightness}) contrast(${state.effects.contrast}) saturate(${state.effects.saturation}) blur(${state.effects.blur}px)`}
+function applyPreviewFx(primary=videoClipAtTime(state.playhead),secondary=null){
+  v.style.filter=cssFilterForClip(primary);
+  transitionVideo.style.filter=cssFilterForClip(secondary||primary);
+  previewImage.style.filter=cssFilterForClip(primary);
+  $('previewVignette').style.opacity=String(bounded(clipVisual(primary).vignette,0,1,0));
+}
 $('previewQuality').onchange=e=>state.settings.previewQuality=e.target.value;
 $('snapSetting').onchange=e=>state.settings.snap=e.target.value==='on';
 $('autoplaySetting').onchange=e=>state.settings.autoplayPreview=e.target.value==='on';
@@ -1052,14 +1262,15 @@ function removeMediaItems(ids){
   const targets=state.media.filter(media=>new Set(ids||[]).has(media.id));
   if(!targets.length)return;
   const targetIds=new Set(targets.map(media=>media.id));
-  const used=state.videoClips.some(c=>targetIds.has(c.mediaId))||state.audioClips.some(c=>targetIds.has(c.mediaId));
+  const used=state.videoClips.some(c=>targetIds.has(c.mediaId))||state.audioClips.some(c=>targetIds.has(c.mediaId))||state.overlayClips.some(c=>targetIds.has(c.mediaId));
   if(used){
     const ok=window.confirm(`${targets.length} selected media item(s) are used on the timeline.\n\nRemove them from this project and remove their timeline clips? Original files on your PC will not be deleted.`);
     if(!ok)return;
     stopTimelinePlayback();
     const removedIds=[
       ...state.videoClips.filter(c=>targetIds.has(c.mediaId)).map(c=>c.id),
-      ...state.audioClips.filter(c=>targetIds.has(c.mediaId)).map(c=>c.id)
+      ...state.audioClips.filter(c=>targetIds.has(c.mediaId)).map(c=>c.id),
+      ...state.overlayClips.filter(c=>targetIds.has(c.mediaId)).map(c=>c.id)
     ];
     removedIds.forEach(cid=>{
       const p=timelineAudioPlayers.get(cid);
@@ -1067,11 +1278,12 @@ function removeMediaItems(ids){
     });
     state.videoClips=state.videoClips.filter(c=>!targetIds.has(c.mediaId));
     state.audioClips=state.audioClips.filter(c=>!targetIds.has(c.mediaId));
+    state.overlayClips=state.overlayClips.filter(c=>!targetIds.has(c.mediaId));
   }
   if(targetIds.has(state.selectedMediaId)){
-    v.pause();a.pause();
-    v.removeAttribute('src');a.removeAttribute('src');v.load();a.load();
-    v.style.display='none';a.style.display='none';
+    v.pause();transitionVideo.pause();a.pause();
+    v.removeAttribute('src');transitionVideo.removeAttribute('src');a.removeAttribute('src');previewImage.removeAttribute('src');v.load();transitionVideo.load();a.load();
+    v.style.display='none';transitionVideo.style.display='none';a.style.display='none';previewImage.style.display='none';
     $('previewEmpty').style.display='';
     $('previewBadge').textContent='NO MEDIA SELECTED';
     state.selectedMediaId=null;
@@ -1087,7 +1299,7 @@ function removeMediaItems(ids){
   state.selectedMediaIds=reconcileSelection(state.selectedMediaIds,orderedMediaIds());
   state.selectedClipIds=reconcileSelection(state.selectedClipIds,orderedTimelineClipIds());
   reconcileActiveSelections();
-  renderMedia();renderTimeline();updateInspector();updateTransport();syncBrandingControls();updateHistoryButtons();
+  renderMedia();renderTimeline();updateInspector();updateTransport();updateOverlayPreview();syncBrandingControls();updateHistoryButtons();
   notify(`${targets.length} imported media item(s) removed from this project`);
 }
 
@@ -1098,8 +1310,11 @@ function sortedVideoClips(){
   return state.videoClips.slice().sort((a,b)=>a.start-b.start);
 }
 
+function videoClipsAtTime(t){
+  return sortedVideoClips().filter(clip=>timelineClipAtTime([clip],t));
+}
 function videoClipAtTime(t){
-  return timelineClipAtTime(sortedVideoClips(),t);
+  return videoClipsAtTime(t)[0]||null;
 }
 
 function audioClipAtTime(t){
@@ -1108,7 +1323,10 @@ function audioClipAtTime(t){
 function audioClipsAtTime(t){
   return state.audioClips.filter(c=>timelineClipAtTime([c],t));
 }
-function hasTimeline(){return state.videoClips.length>0||state.audioClips.length>0}
+function overlayClipsAtTime(t){
+  return state.overlayClips.filter(c=>timelineClipAtTime([c],t));
+}
+function hasTimeline(){return state.videoClips.length>0||state.audioClips.length>0||state.overlayClips.length>0}
 function clipGainAt(c,t){
   const local=Math.max(0,t-c.start),dur=clipTimelineDuration(c);
   let gain=1;
@@ -1119,6 +1337,43 @@ function clipGainAt(c,t){
 
 function previewSourceTime(c,t){
   return c.trimStart + Math.max(0,t-c.start)*(c.speed||1);
+}
+
+function previewClipOpacity(c,t){
+  const local=Math.max(0,t-c.start),duration=clipTimelineDuration(c);
+  let opacity=1;
+  const transitionIn=bounded(c.transitionIn,0,2,0);
+  const transitionOut=c.transitionOut==='crossfade'?bounded(c.transitionDuration,.1,2,.45):0;
+  if(transitionIn>0&&local<transitionIn)opacity*=local/transitionIn;
+  if(transitionOut>0&&local>duration-transitionOut)opacity*=Math.max(0,(duration-local)/transitionOut);
+  return bounded(opacity,0,1,1);
+}
+function cssFilterForClip(clip){
+  const visual=clipVisual(clip);
+  const brightness=bounded((state.effects.brightness||0)+visual.brightness,-.9,.9,0);
+  const contrast=bounded((state.effects.contrast||1)*visual.contrast,.1,3,1);
+  const saturation=bounded((state.effects.saturation||1)*visual.saturation,0,3,1);
+  const blur=bounded((state.effects.blur||0)+visual.blur,0,20,0);
+  return `brightness(${1+brightness}) contrast(${contrast}) saturate(${saturation}) hue-rotate(${visual.hue}deg) blur(${blur}px)`;
+}
+function updateOverlayPreview(){
+  const layer=$('previewOverlayLayer');
+  layer.replaceChildren();
+  if(!state.timelinePreview)return;
+  for(const clip of overlayClipsAtTime(state.playhead)){
+    const media=state.media.find(item=>item.id===clip.mediaId);
+    if(!media)continue;
+    const item=document.createElement('div');
+    item.className='preview-overlay-item';
+    item.dataset.position=visualConfig.positions.includes(clip.position)?clip.position:defaultOverlay.position;
+    item.style.opacity=String(bounded(clip.opacity,.1,1,defaultOverlay.opacity));
+    item.style.width=`${Math.round(bounded(clip.scale,.08,1,defaultOverlay.scale)*100)}%`;
+    const image=document.createElement('img');
+    image.src=media.url;image.alt='';image.draggable=false;
+    image.style.width='100%';
+    image.style.filter=cssFilterForClip(clip);
+    item.appendChild(image);layer.appendChild(item);
+  }
 }
 
 
@@ -1169,14 +1424,17 @@ async function previewTimelineAt(t,autoplay=false){
   state.timelinePreview=true;
   state.playhead=Math.max(0,Math.min(projectEnd()||0,t));
   $('timelineModeBadge').style.display='block';
-  a.pause();a.style.display='none';
+  a.pause();a.style.display='none';previewImage.style.display='none';
 
-  const c=videoClipAtTime(state.playhead);
+  const activeVideos=videoClipsAtTime(state.playhead);
+  const c=activeVideos[0]||null;
+  const secondary=activeVideos[1]||null;
   const activeAudio=audioClipsAtTime(state.playhead);
 
   if(!c){
     state.activeTimelineClipId=null;
-    v.pause();v.style.display='none';
+    v.pause();transitionVideo.pause();v.style.display='none';transitionVideo.style.display='none';
+    $('previewVignette').style.opacity='0';
     await syncExternalTimelineAudio(state.playhead,autoplay);
     if(requestId!==state.previewRequestId)return;
     if(activeAudio.length){
@@ -1194,7 +1452,7 @@ async function previewTimelineAt(t,autoplay=false){
       $('previewEmpty').innerHTML='<b>Timeline gap</b><br>Move the playhead onto a video or audio clip.';
       $('previewBadge').textContent='TIMELINE PREVIEW';
     }
-    renderPlayhead();updateTimelineTimeReadout();
+    updateOverlayPreview();renderPlayhead();updateTimelineTimeReadout();
     return;
   }
 
@@ -1221,14 +1479,38 @@ async function previewTimelineAt(t,autoplay=false){
   v.playbackRate=Math.max(.25,Math.min(4,c.speed||1));
   v.volume=Math.max(0,Math.min(1,c.volume??1))*clipGainAt(c,state.playhead)*Math.max(0,Math.min(1,+$('masterVolume').value||1));
   v.muted=state.previewMuted;
-  applyPreviewFx();
+  v.style.opacity=String(previewClipOpacity(c,state.playhead));
+
+  if(secondary){
+    const secondaryMedia=state.media.find(media=>media.id===secondary.mediaId);
+    if(secondaryMedia){
+      const needsTransitionSource=transitionVideo.dataset.clipId!==secondary.id||transitionVideo.dataset.mediaId!==secondary.mediaId;
+      if(needsTransitionSource){
+        transitionVideo.pause();transitionVideo.src=secondaryMedia.url;transitionVideo.dataset.mediaId=secondary.mediaId;transitionVideo.dataset.clipId=secondary.id;
+        await new Promise(resolve=>{
+          if(transitionVideo.readyState>=1)return resolve();
+          const done=()=>{transitionVideo.removeEventListener('loadedmetadata',done);resolve()};
+          transitionVideo.addEventListener('loadedmetadata',done);setTimeout(resolve,700);
+        });
+        if(requestId!==state.previewRequestId)return;
+      }
+      const secondaryTime=Math.min(Math.max(secondary.trimStart,previewSourceTime(secondary,state.playhead)),Math.max(secondary.trimStart,secondary.trimEnd-.01));
+      if(Math.abs((transitionVideo.currentTime||0)-secondaryTime)>.12){try{transitionVideo.currentTime=secondaryTime}catch{}}
+      transitionVideo.playbackRate=Math.max(.25,Math.min(4,secondary.speed||1));
+      transitionVideo.muted=true;transitionVideo.style.opacity=String(previewClipOpacity(secondary,state.playhead));transitionVideo.style.display='block';
+      if(autoplay){try{await transitionVideo.play()}catch{}}else transitionVideo.pause();
+    }
+  }else{
+    transitionVideo.pause();transitionVideo.style.display='none';transitionVideo.removeAttribute('src');delete transitionVideo.dataset.clipId;delete transitionVideo.dataset.mediaId;
+  }
+  applyPreviewFx(c,secondary);
   await syncExternalTimelineAudio(state.playhead,autoplay);
   if(requestId!==state.previewRequestId)return;
 
   if(autoplay){try{await v.play()}catch{}}
   else v.pause();
 
-  renderPlayhead();updateTimelineTimeReadout();
+  updateOverlayPreview();renderPlayhead();updateTimelineTimeReadout();
 }
 
 function updateTimelineTimeReadout(){
@@ -1245,7 +1527,7 @@ function stopTimelinePlayback(){
   }
   state.timelinePlaying=false;
   state.isPlaying=false;
-  v.pause();
+  v.pause();transitionVideo.pause();
   stopExternalTimelineAudio();
   $('playPause').textContent='▶';
 }
@@ -1275,10 +1557,13 @@ async function startTimelinePlayback(){
       return;
     }
 
-    const c=videoClipAtTime(state.playhead);
+    const activeVideos=videoClipsAtTime(state.playhead);
+    const c=activeVideos[0]||null;
+    const secondary=activeVideos[1]||null;
     if(c){
       const currentId=state.activeTimelineClipId;
-      if(currentId!==c.id || v.style.display==='none'){
+      const transitionNeedsRefresh=Boolean(secondary)!==(transitionVideo.style.display!=='none')||(secondary&&transitionVideo.dataset.clipId!==secondary.id);
+      if(currentId!==c.id || v.style.display==='none'||transitionNeedsRefresh){
         await previewTimelineAt(state.playhead,true);
       }else{
         const expected=previewSourceTime(c,state.playhead);
@@ -1287,13 +1572,22 @@ async function startTimelinePlayback(){
         }
         v.playbackRate=Math.max(.25,Math.min(4,c.speed||1));
         v.volume=Math.max(0,Math.min(1,c.volume??1))*Math.max(0,Math.min(1,+$('masterVolume').value||1));
+        v.style.opacity=String(previewClipOpacity(c,state.playhead));
         if(v.paused){try{await v.play()}catch{}}
+        if(secondary&&transitionVideo.dataset.clipId===secondary.id){
+          const transitionExpected=previewSourceTime(secondary,state.playhead);
+          if(Math.abs((transitionVideo.currentTime||0)-transitionExpected)>.35){try{transitionVideo.currentTime=transitionExpected}catch{}}
+          transitionVideo.playbackRate=Math.max(.25,Math.min(4,secondary.speed||1));
+          transitionVideo.style.opacity=String(previewClipOpacity(secondary,state.playhead));
+          if(transitionVideo.paused){try{await transitionVideo.play()}catch{}}
+        }
+        applyPreviewFx(c,secondary);
         await syncExternalTimelineAudio(state.playhead,true);
-        renderPlayhead();
+        updateOverlayPreview();renderPlayhead();
         updateTimelineTimeReadout();
       }
     }else{
-      v.pause();v.style.display='none';
+      v.pause();transitionVideo.pause();v.style.display='none';transitionVideo.style.display='none';
       const activeAudio=audioClipsAtTime(state.playhead);
       await syncExternalTimelineAudio(state.playhead,true);
       if(activeAudio.length){
@@ -1310,7 +1604,7 @@ async function startTimelinePlayback(){
         $('previewEmpty').innerHTML='<b>Timeline gap</b><br>Playback continues to the next clip.';
         $('previewBadge').textContent='TIMELINE GAP';
       }
-      renderPlayhead();updateTimelineTimeReadout();
+      updateOverlayPreview();renderPlayhead();updateTimelineTimeReadout();
     }
 
     state.timelineTimer=requestAnimationFrame(tick);
@@ -1529,7 +1823,7 @@ $('importMedia').onclick=selectImportMedia;
 $('filePicker').onchange=async e=>{await addFiles([...e.target.files]);e.target.value=''};
 $('addSelectedMedia').onclick=addSelectedMediaToTimeline;
 $('removeSelectedMedia').onclick=()=>removeMediaItems([...state.selectedMediaIds]);
-$('filterAll').onclick=()=>{mediaFilter='all';renderMedia()};$('filterVideo').onclick=()=>{mediaFilter='video';renderMedia()};$('filterAudio').onclick=()=>{mediaFilter='audio';renderMedia()};
+$('filterAll').onclick=()=>{mediaFilter='all';renderMedia()};$('filterVideo').onclick=()=>{mediaFilter='video';renderMedia()};$('filterAudio').onclick=()=>{mediaFilter='audio';renderMedia()};$('filterImage').onclick=()=>{mediaFilter='image';renderMedia()};
 $('mediaSearch').oninput=event=>{mediaSearch=event.target.value;renderMedia()};
 $('mediaSort').onchange=event=>{mediaSort=event.target.value;renderMedia()};
 $('mediaThumbSize').oninput=event=>{state.mediaThumbnailSize=Number(event.target.value)||132;renderMedia()};
@@ -1725,7 +2019,7 @@ $('duplicateClip').onclick=()=>{
   const c=findClip(state.selectedClipId);if(!c)return;
   pushHistory('Duplicate clip');
   const cp={...c,id:uid(),start:c.start+clipTimelineDuration(c)+.1};
-  (c.type==='audio'?state.audioClips:state.videoClips).push(cp);
+  clipCollectionForType(c.type).push(cp);
   state.selectedClipIds=new Set([cp.id]);state.selectedClipId=cp.id;state.clipSelectionAnchorId=cp.id;
   renderTimeline();updateInspector();previewTimelineAt(state.playhead,false);
 };
@@ -1741,6 +2035,7 @@ function deleteSelected(){
   }
   state.videoClips=state.videoClips.filter(clip=>!ids.has(clip.id));
   state.audioClips=state.audioClips.filter(clip=>!ids.has(clip.id));
+  state.overlayClips=state.overlayClips.filter(clip=>!ids.has(clip.id));
   state.selectedClipIds=new Set();state.selectedClipId=null;state.clipSelectionAnchorId=null;
   state.playhead=Math.min(state.playhead,projectEnd());
   renderTimeline();updateInspector();previewTimelineAt(state.playhead,false);
@@ -1749,18 +2044,19 @@ function deleteSelected(){
 $('deleteClip').onclick=deleteSelected;
 $('newProject').onclick=()=>{
   stopTimelinePlayback();
-  state.videoClips=[];state.audioClips=[];state.selectedClipIds=new Set();state.selectedClipId=null;state.clipSelectionAnchorId=null;state.playhead=0;state.activeTimelineClipId=null;state.history=[];state.future=[];
+  state.videoClips=[];state.audioClips=[];state.overlayClips=[];state.selectedClipIds=new Set();state.selectedClipId=null;state.clipSelectionAnchorId=null;state.playhead=0;state.activeTimelineClipId=null;state.history=[];state.future=[];
   $('timelineModeBadge').style.display='none';
   renderTimeline();updateTransport();notify('Timeline cleared');
 };
 $('addVideoTrack').onclick=()=>{const m=state.media.find(x=>x.id===state.selectedMediaId&&x.type==='video');if(!m)return notify('Select a video first.');addClip(m.id,'video')};
 $('addAudioTrack').onclick=()=>{const m=state.media.find(x=>x.id===state.selectedMediaId&&x.type==='audio');if(!m)return notify('Select audio first.');addClip(m.id,'audio')};
+$('addOverlayTrack').onclick=()=>{const m=state.media.find(x=>x.id===state.selectedMediaId&&x.type==='image');if(!m)return notify('Select an image in Resources first.');addClip(m.id,'overlay')};
 
 function setupLaneDrop(laneId,trackType){
   const lane=$(laneId);
   lane.addEventListener('dragover',e=>{
     const mediaType=e.dataTransfer.getData('application/x-emx-media-type');
-    if(mediaType&&mediaType!==trackType)return;
+    if(mediaType&&!trackAcceptsMedia(trackType,{type:mediaType}))return;
     e.preventDefault();
     e.dataTransfer.dropEffect='copy';
     lane.classList.add('drop-ready');
@@ -1772,14 +2068,15 @@ function setupLaneDrop(laneId,trackType){
     const id=e.dataTransfer.getData('application/x-emx-media-id')||e.dataTransfer.getData('text/plain');
     const media=state.media.find(x=>x.id===id);
     if(!media)return;
-    if(media.type!==trackType){
-      notify(`Drop ${media.type} media onto the ${media.type.toUpperCase()} track.`);
+    if(!trackAcceptsMedia(trackType,media)){
+      notify(`Drop ${media.type} media onto the matching ${trackType.toUpperCase()} track.`);
       return;
     }
     const rect=lane.getBoundingClientRect();
     let start=Math.max(0,(e.clientX-rect.left)/Math.max(1,state.pxPerSec));
-    const phantom={id:'new',start,trimStart:0,trimEnd:media.duration,speed:1};
-    const arr=trackType==='video'?state.videoClips:state.audioClips;
+    const duration=trackType==='overlay'?5:media.duration;
+    const phantom={id:'new',start,trimStart:0,trimEnd:duration,speed:1};
+    const arr=clipCollectionForType(trackType);
     start=arr.length===0?0:magneticStart(start,phantom,arr);
     addClip(media.id,trackType,start);
     notify(`${media.name} added to ${trackType.toUpperCase()} track`);
@@ -1787,6 +2084,7 @@ function setupLaneDrop(laneId,trackType){
 }
 setupLaneDrop('videoLane','video');
 setupLaneDrop('audioLane','audio');
+setupLaneDrop('overlayLane','overlay');
 
 function setupTimelineSeek(element){
   element.addEventListener('pointerdown',e=>{
@@ -1800,6 +2098,7 @@ function setupTimelineSeek(element){
 }
 setupTimelineSeek($('videoLane'));
 setupTimelineSeek($('audioLane'));
+setupTimelineSeek($('overlayLane'));
 
 
 
@@ -1831,10 +2130,15 @@ $('exportBtn').onclick=async()=>{
       suggestedName:`EMX_Clip_${new Date().toISOString().replace(/[:.]/g,'-')}.mp4`,
       project:{
         videoClips:state.videoClips.map(c=>({
-          id:c.id,name:c.name,path:c.nativePath,start:c.start,trimStart:c.trimStart,trimEnd:c.trimEnd,speed:c.speed,volume:c.volume
+          id:c.id,name:c.name,path:c.nativePath,start:c.start,trimStart:c.trimStart,trimEnd:c.trimEnd,speed:c.speed,volume:c.volume,
+          fadeIn:c.fadeIn,fadeOut:c.fadeOut,visual:clipVisual(c),transitionOut:c.transitionOut,transitionDuration:c.transitionDuration,transitionIn:c.transitionIn
         })),
         audioClips:state.audioClips.map(c=>({
-          id:c.id,name:c.name,path:c.nativePath,start:c.start,trimStart:c.trimStart,trimEnd:c.trimEnd,speed:c.speed,volume:c.volume
+          id:c.id,name:c.name,path:c.nativePath,start:c.start,trimStart:c.trimStart,trimEnd:c.trimEnd,speed:c.speed,volume:c.volume,fadeIn:c.fadeIn,fadeOut:c.fadeOut
+        })),
+        overlayClips:state.overlayClips.map(c=>({
+          id:c.id,name:c.name,path:c.nativePath,start:c.start,trimStart:c.trimStart,trimEnd:c.trimEnd,speed:1,
+          opacity:c.opacity,scale:c.scale,position:c.position,visual:clipVisual(c)
         })),
         effects:{...state.effects},
         branding:{...state.branding},
@@ -2064,7 +2368,7 @@ function renderUpdateState(update){
   $('updateChannel').textContent=update.channel||'latest';
   $('updateLastChecked').textContent=formatUpdateDate(update.lastCheckedAt);
   $('updateSigning').textContent=update.signing||'unknown';
-  $('appVersionLabel').textContent=`Desktop Timeline Editor • V${update.currentVersion||'1.8.2'}`;
+  $('appVersionLabel').textContent=`Desktop Timeline Editor • V${update.currentVersion||'1.9.0'}`;
   $('updateProgress').style.width=`${percent}%`;
   $('updateProgressText').textContent=update.status==='DOWNLOADING'
     ? `${percent.toFixed(1)}% • ${formatBytes(progress.transferred)} / ${formatBytes(progress.total)} • ${formatBytes(progress.bytesPerSecond)}/s`
@@ -2082,11 +2386,11 @@ function renderUpdateState(update){
 }
 async function hydrateUpdateCenter(){
   if(!window.emxDesktop?.available){
-    renderUpdateState({status:'OFFLINE',currentVersion:'1.8.2',channel:'latest',configured:false,message:'Update Center requires the desktop application.',progress:{}});
+    renderUpdateState({status:'OFFLINE',currentVersion:'1.9.0',channel:'latest',configured:false,message:'Update Center requires the desktop application.',progress:{}});
     return;
   }
   try{renderUpdateState(await window.emxDesktop.updateStatus())}
-  catch(error){renderUpdateState({status:'UPDATE FAILED',currentVersion:'1.8.2',channel:'latest',configured:false,message:String(error?.message||error),progress:{}})}
+  catch(error){renderUpdateState({status:'UPDATE FAILED',currentVersion:'1.9.0',channel:'latest',configured:false,message:String(error?.message||error),progress:{}})}
 }
 if(window.emxDesktop?.available&&window.emxDesktop.onUpdateEvent){window.emxDesktop.onUpdateEvent(renderUpdateState)}
 function notifyManualUpdateCheck(update){
