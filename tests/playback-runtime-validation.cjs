@@ -120,6 +120,12 @@ function makeClip(name, source, tone, seconds) {
         ct: +ct.toFixed(3), paused: video.paused, timeline: readTimeline(),
         clock: +(snap.clock || 0).toFixed(3), src: snap.clockSource || '',
         clip: (snap.activeClipId || '').slice(0, 4), playing: snap.timelinePlaying,
+        rej: snap.clockRejection || '-', settled: snap.loadSettled, rs: video.readyState,
+        vMed: (snap.mediaId || '').slice(0, 4), cMed: (snap.activeClipMediaId || '').slice(0, 4),
+        cStart: snap.activeClipStart,
+        dur: Number.isFinite(video.duration) ? +video.duration.toFixed(2) : String(video.duration),
+        seekEnd: video.seekable.length ? +video.seekable.end(0).toFixed(2) : -1,
+        netState: video.networkState,
         quiet: now > probe.quietUntil
       });
     }, 50);
@@ -228,10 +234,12 @@ function makeClip(name, source, tone, seconds) {
   await record('plainPlay', clickPlay, 6500);
 
   // 2. Drag scrubber -> release (pointerup AND change) -> immediately Play.
+  //    Watch for a long window: the abandoned-load race took several seconds to
+  //    surface, so a short settle silently passed while the bug was still there.
   await record('scrubThenPlay', async () => {
     await scrub('scrub', [1, 2, 3, 4]);
     await clickPlay();
-  }, 4000);
+  }, 9000);
 
   // 3. Play -> seek -> Play, 20 times.
   await record('playSeekPlay20', async () => {
@@ -295,6 +303,13 @@ function makeClip(name, source, tone, seconds) {
     }
     r.timelineDrops = drops;
     if (drops.length) console.log('         timelineDrops: ' + drops.join(' | '));
+    if (drops.length && name === 'scrubThenPlay') {
+      const at = r.trace.findIndex((t, i) => i > 0 && t < r.trace[i - 1] - 0.15);
+      console.log('         window around drop:');
+      for (const d of r.detail.slice(Math.max(0, at - 6), at + 4)) {
+        console.log(`           tl=${d.timeline} ct=${d.ct} clk=${d.clock} src=${d.src} settled=${d.settled} vMed=${d.vMed} clipMed=${d.cMed} clipStart=${d.cStart} dur=${d.dur} seekEnd=${d.seekEnd} net=${d.netState}`);
+      }
+    }
   }
 
   for (const [name, r] of Object.entries(results)) {

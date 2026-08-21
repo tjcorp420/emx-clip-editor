@@ -13,7 +13,7 @@ const app=document.querySelector('#app');
 const state={
   media:[],videoClips:[],audioClips:[],overlayClips:[],effectClips:[],selectedMediaId:null,selectedClipId:null,
   selectedMediaIds:new Set(),selectedClipIds:new Set(),mediaSelectionAnchorId:null,clipSelectionAnchorId:null,
-  playhead:0,pxPerSec:10,isPlaying:false,timelinePlaying:false,fitTimeline:true,timelinePreview:true,timelineTimer:null,activeTimelineClipId:null,previewRequestId:0,previewMuted:false,scrubbing:false,scrubSessionToken:0,scrubPreviewTimer:null,lastTransitionResyncAt:0,renderBusy:false,renderStartedAt:0,lastExportPath:'',
+  playhead:0,pxPerSec:10,isPlaying:false,timelinePlaying:false,fitTimeline:true,timelinePreview:true,timelineTimer:null,activeTimelineClipId:null,previewRequestId:0,previewMuted:false,scrubbing:false,scrubSessionToken:0,scrubPreviewTimer:null,lastTransitionResyncAt:0,lastPrimaryReassertAt:0,renderBusy:false,renderStartedAt:0,lastExportPath:'',
   history:[],future:[],
   branding:{position:'bottom-right',opacity:.78},
   mediaView:'grid',mediaThumbnailSize:132,
@@ -26,6 +26,14 @@ const uid=()=>crypto.randomUUID?.()||`${Date.now()}_${Math.random().toString(16)
 const timelinePlaybackSession=createPlaybackSession();
 const scrubSession=createScrubSession();
 const timelineClock=createTimelineClock();
+/**
+ * False while the primary element carries a source load that no live preview
+ * request finished. A superseded request can assign v.src and then abandon it,
+ * leaving the element about to reset itself to 0 while state still claims the
+ * right clip is loaded. Any later request must redo the load it can own rather
+ * than seeking an element that is going to discard the seek.
+ */
+let primaryLoadSettled=true;
 // Injected from package.json by vite.config.js at build time.
 const APP_VERSION=typeof __EMX_APP_VERSION__==='string'?__EMX_APP_VERSION__:'0.0.0';
 
@@ -1860,16 +1868,34 @@ async function previewTimelineAt(t,autoplay=false){
   $('audioTimelineVisual').style.display='none';
   const media=state.media.find(m=>m.id===c.mediaId);
   if(!media)return;
-  const needsSource=state.activeTimelineClipId!==c.id || v.dataset.mediaId!==c.mediaId;
+  const needsSource=state.activeTimelineClipId!==c.id || v.dataset.mediaId!==c.mediaId || !primaryLoadSettled;
   state.activeTimelineClipId=c.id;
 
   if(needsSource){
     if(transitionVideo.dataset.clipId===c.id){
       transitionVideo.pause();transitionVideo.style.display='none';
     }
-    v.pause();v.src=media.url;v.dataset.mediaId=c.mediaId;v.style.display='block';
-    $('previewEmpty').style.display='none';
+    v.pause();v.src=media.url;v.dataset.mediaId=c.mediaId;
+    primaryLoadSettled=false;
     $('previewBadge').textContent=`TIMELINE • ${c.name}`;
+    // readyState still describes the PREVIOUS load for a moment after src is
+    // assigned, because the resource selection algorithm runs asynchronously.
+    // Waiting on this load's own loadedmetadata is the only safe signal: seeking
+    // before it arrives is silently discarded when the new load resets the
+    // element to 0, which is what dragged the playhead backwards after a scrub.
+    await new Promise(resolve=>{
+      let settled=false;
+      const done=()=>{
+        if(settled)return;
+        settled=true;
+        v.removeEventListener('loadedmetadata',done);
+        clearTimeout(timer);
+        resolve();
+      };
+      const timer=setTimeout(done,1200);
+      v.addEventListener('loadedmetadata',done);
+    });
+    if(requestId!==state.previewRequestId)return;
   }
 
   // A superseded preview request can abandon this element part-way through a
@@ -1893,8 +1919,20 @@ async function previewTimelineAt(t,autoplay=false){
     if(requestId!==state.previewRequestId)return;
   }
 
+  // Presentation state is asserted on every request. When it lived only in the
+  // needsSource branch, any path that hid the element (a gap, a Resources
+  // preview) left it hidden, and a later request for the same clip would not
+  // restore it: the loop then saw display:'none', refused to let the element own
+  // the clock, and held timeline time while the element played on unseen.
+  v.style.display='block';
+  $('previewEmpty').style.display='none';
+  $('previewBadge').textContent=`TIMELINE • ${c.name}`;
+
   const sourceT=Math.min(Math.max(c.trimStart,previewSourceTime(c,state.playhead)),Math.max(c.trimStart,c.trimEnd-.01));
   if(Math.abs((v.currentTime||0)-sourceT)>.12){try{v.currentTime=sourceT}catch{}}
+  // This request owns the element and has positioned it, so a later request may
+  // trust the load instead of rebuilding it.
+  primaryLoadSettled=true;
   v.playbackRate=Math.max(.25,Math.min(4,c.speed||1));
   v.volume=Math.max(0,Math.min(1,c.volume??1))*clipGainAt(c,state.playhead)*Math.max(0,Math.min(1,+$('masterVolume').value||1));
   v.muted=state.previewMuted;
@@ -1990,6 +2028,7 @@ function recoverPoisonedPreviewElements(){
   if(recovered){
     state.activeTimelineClipId=null;
     state.lastTransitionResyncAt=0;
+    primaryLoadSettled=true;
   }
   return recovered;
 }
@@ -2052,14 +2091,25 @@ async function startTimelinePlayback(){
     // the media clock can never separate and the primary is never seeked
     // backwards to catch up.
     const clockClip=state.activeTimelineClipId?state.videoClips.find(clip=>clip.id===state.activeTimelineClipId):null;
-    const primaryOwnsClock=Boolean(clockClip)&&!clockClip.isFreeze&&v.dataset.mediaId===clockClip.mediaId&&v.style.display!=='none';
+    // primaryLoadSettled gates this: while a source load is in flight the
+    // element's currentTime describes the outgoing load, not this clip.
+    const primaryOwnsClock=Boolean(clockClip)&&!clockClip.isFreeze&&primaryLoadSettled&&v.dataset.mediaId===clockClip.mediaId&&v.style.display!=='none';
     if(primaryOwnsClock&&!v.paused){
       if(timelineClock.syncToMedia(v.currentTime,clockClip,now)===null){
         if(timelineClock.rejection==='rewind'){
-          // The element reset underneath us. Hold time and re-assert the
-          // position rather than letting the playhead jump backwards.
+          // The element reset itself underneath the clock. Hold timeline time
+          // and put the element back where the clock says it should be. This is
+          // the only place the primary is ever seeked, it runs only when the
+          // element has demonstrably reset, and it is throttled so it cannot
+          // become a seek storm.
           timelineClock.hold(now);
-          requestHandoff();
+          const plan=planSlaveCorrection({
+            expected:previewSourceTime(clockClip,timelineClock.time),
+            actual:v.currentTime,
+            now,
+            lastCorrectionAt:state.lastPrimaryReassertAt||-Infinity
+          });
+          if(plan.seek){try{v.currentTime=plan.to}catch{}state.lastPrimaryReassertAt=plan.at}
         }else{
           // The element has run past this clip's end: carry the playhead to the
           // boundary so the incoming clip can be promoted.
@@ -2157,11 +2207,15 @@ window.__emxPlaybackSnapshot=()=>({
   playhead:state.playhead,
   clock:timelineClock.time,
   clockSource:timelineClock.source,
+  clockRejection:timelineClock.rejection,
+  loadSettled:primaryLoadSettled,
   activeClipId:state.activeTimelineClipId,
   timelinePlaying:state.timelinePlaying,
   timelinePreview:state.timelinePreview,
   previewRequestId:state.previewRequestId,
   mediaId:v.dataset.mediaId||'',
+  activeClipMediaId:(state.videoClips.find(c=>c.id===state.activeTimelineClipId)||{}).mediaId||'',
+  activeClipStart:(state.videoClips.find(c=>c.id===state.activeTimelineClipId)||{}).start,
   currentTime:v.currentTime,
   paused:v.paused,
   readyState:v.readyState,

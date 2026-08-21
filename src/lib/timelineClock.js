@@ -148,9 +148,25 @@ export function createTimelineClock(){
       return Math.max(0,(Number(wallNow)||lastWall)-heldSince);
     },
 
-    /** Used by seeks/scrubs that authoritatively place the playhead. */
+    /**
+     * Used by seeks/scrubs that authoritatively place the playhead.
+     *
+     * Re-asserting essentially the current time - a clip handoff repositioning
+     * the element - must NOT disarm the monotonic guard, or the element gets
+     * trusted again during the window between this call and the element actually
+     * reaching the requested position. Only a genuine reposition re-bases.
+     */
     seekTo(t,wallNow){
-      return this.reset(t,wallNow);
+      const target=Math.max(0,Number(t)||0);
+      if(lastClipId!==null&&Math.abs(target-time)<=CLOCK_LIMITS.rewindGuard){
+        time=target;
+        lastWall=Number(wallNow)||lastWall;
+        source='held';
+        if(!heldSince)heldSince=lastWall;
+        rejection=null;
+        return time;
+      }
+      return this.reset(target,wallNow);
     }
   };
 }
