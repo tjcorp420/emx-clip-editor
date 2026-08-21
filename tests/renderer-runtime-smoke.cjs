@@ -50,7 +50,13 @@ function finish(code, message) {
     };
   })()`);
   window.destroy();
-  assert.match(result.version, /V1\.11\.4/);
+  // Track package.json rather than a hard-coded version, so a release bump does
+  // not silently break the renderer smoke test.
+  const { version } = require('../package.json');
+  assert.ok(
+    result.version.includes(`V${version}`),
+    `Renderer version label ${JSON.stringify(result.version)} must report V${version}`
+  );
   assert.equal(result.effectLane, true);
   assert.equal(result.effectCards, 15);
   assert.equal(result.effectsDraggable, true);

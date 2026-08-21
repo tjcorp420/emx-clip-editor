@@ -26,11 +26,13 @@ const uid=()=>crypto.randomUUID?.()||`${Date.now()}_${Math.random().toString(16)
 const timelinePlaybackSession=createPlaybackSession();
 const scrubSession=createScrubSession();
 const timelineClock=createTimelineClock();
+// Injected from package.json by vite.config.js at build time.
+const APP_VERSION=typeof __EMX_APP_VERSION__==='string'?__EMX_APP_VERSION__:'0.0.0';
 
 app.innerHTML=`
 <div class="app">
 <header class="topbar">
-  <div class="brand"><img class="logo" src="./emx-logo.png" onerror="this.style.display='none'" alt="EMX"><div><h1>EMX CLIP STUDIO</h1><small id="appVersionLabel">Desktop Timeline Editor • V1.11.4</small></div></div>
+  <div class="brand"><img class="logo" src="./emx-logo.png" onerror="this.style.display='none'" alt="EMX"><div><h1>EMX CLIP STUDIO</h1><small id="appVersionLabel">Desktop Timeline Editor • V${APP_VERSION}</small></div></div>
   <div class="top-actions">
     <button class="btn undo-last" id="undoLastBtn" disabled>↶ UNDO LAST</button><button class="btn" id="redoBtn" disabled>↷ Redo</button><button class="btn" id="newProject">New</button>
     <button class="btn" id="openFolder">📁 Clips Folder</button>
@@ -1868,10 +1870,25 @@ async function previewTimelineAt(t,autoplay=false){
     v.pause();v.src=media.url;v.dataset.mediaId=c.mediaId;v.style.display='block';
     $('previewEmpty').style.display='none';
     $('previewBadge').textContent=`TIMELINE • ${c.name}`;
+  }
+
+  // A superseded preview request can abandon this element part-way through a
+  // load, leaving state that says the right clip is loaded while the element is
+  // still about to reset itself to 0. Wait for usable metadata regardless of
+  // whether *this* request started the load, otherwise the seek below is applied
+  // to an element that then discards it.
+  if(v.readyState<1){
     await new Promise(resolve=>{
-      if(v.readyState>=1)return resolve();
-      const done=()=>{v.removeEventListener('loadedmetadata',done);resolve()};
-      v.addEventListener('loadedmetadata',done);setTimeout(resolve,700);
+      let settled=false;
+      const done=()=>{
+        if(settled)return;
+        settled=true;
+        v.removeEventListener('loadedmetadata',done);
+        clearTimeout(timer);
+        resolve();
+      };
+      const timer=setTimeout(done,700);
+      v.addEventListener('loadedmetadata',done);
     });
     if(requestId!==state.previewRequestId)return;
   }
@@ -2037,7 +2054,18 @@ async function startTimelinePlayback(){
     const clockClip=state.activeTimelineClipId?state.videoClips.find(clip=>clip.id===state.activeTimelineClipId):null;
     const primaryOwnsClock=Boolean(clockClip)&&!clockClip.isFreeze&&v.dataset.mediaId===clockClip.mediaId&&v.style.display!=='none';
     if(primaryOwnsClock&&!v.paused){
-      if(timelineClock.syncToMedia(v.currentTime,clockClip,now)===null)timelineClock.advanceWall(now);
+      if(timelineClock.syncToMedia(v.currentTime,clockClip,now)===null){
+        if(timelineClock.rejection==='rewind'){
+          // The element reset underneath us. Hold time and re-assert the
+          // position rather than letting the playhead jump backwards.
+          timelineClock.hold(now);
+          requestHandoff();
+        }else{
+          // The element has run past this clip's end: carry the playhead to the
+          // boundary so the incoming clip can be promoted.
+          timelineClock.advanceWall(now);
+        }
+      }
     }else if(clockClip){
       timelineClock.hold(now);
       if(timelineClock.heldFor(now)>CLOCK_LIMITS.stallRecoveryMs){
@@ -2119,6 +2147,26 @@ async function startTimelinePlayback(){
   if(ownsPlayback())state.timelineTimer=requestAnimationFrame(tick);
 }
 
+
+/**
+ * Read-only playback snapshot for automated diagnosis. Exposes no mutators, so
+ * it cannot change playback behaviour; it exists so playback races can be
+ * observed from a test harness instead of guessed at.
+ */
+window.__emxPlaybackSnapshot=()=>({
+  playhead:state.playhead,
+  clock:timelineClock.time,
+  clockSource:timelineClock.source,
+  activeClipId:state.activeTimelineClipId,
+  timelinePlaying:state.timelinePlaying,
+  timelinePreview:state.timelinePreview,
+  previewRequestId:state.previewRequestId,
+  mediaId:v.dataset.mediaId||'',
+  currentTime:v.currentTime,
+  paused:v.paused,
+  readyState:v.readyState,
+  clips:state.videoClips.map(c=>({id:c.id,start:c.start,trimStart:c.trimStart,trimEnd:c.trimEnd,mediaId:c.mediaId,speed:c.speed}))
+});
 
 $('playPause').onclick=async()=>{
   if(!state.timelinePreview){
@@ -3039,11 +3087,11 @@ function renderUpdateState(update){
 }
 async function hydrateUpdateCenter(){
   if(!window.emxDesktop?.available){
-    renderUpdateState({status:'OFFLINE',currentVersion:'1.11.4',channel:'latest',configured:false,message:'Update Center requires the desktop application.',progress:{}});
+    renderUpdateState({status:'OFFLINE',currentVersion:APP_VERSION,channel:'latest',configured:false,message:'Update Center requires the desktop application.',progress:{}});
     return;
   }
   try{renderUpdateState(await window.emxDesktop.updateStatus())}
-  catch(error){renderUpdateState({status:'UPDATE FAILED',currentVersion:'1.11.4',channel:'latest',configured:false,message:String(error?.message||error),progress:{}})}
+  catch(error){renderUpdateState({status:'UPDATE FAILED',currentVersion:APP_VERSION,channel:'latest',configured:false,message:String(error?.message||error),progress:{}})}
 }
 if(window.emxDesktop?.available&&window.emxDesktop.onUpdateEvent){window.emxDesktop.onUpdateEvent(renderUpdateState)}
 function notifyManualUpdateCheck(update){

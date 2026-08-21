@@ -127,6 +127,45 @@ assert.equal(timelineTimeFromMedia(Number.NaN, clip()), null,
   'a NaN media time must never become the timeline clock');
 
 /* ---------------------------------------------------------------- *
+ * A superseded preview request can abandon the shared element part-way
+ * through a load, so it resets itself to 0 while state still says the
+ * right clip is loaded. Within one clip, forward playback is monotonic:
+ * the clock must refuse that derived time instead of snapping the
+ * playhead backwards, and must say why so the caller can re-assert.
+ * ---------------------------------------------------------------- */
+{
+  const clock = createTimelineClock();
+  const c = clip({start: 0, trimStart: 0, trimEnd: 6});
+  clock.reset(0, 0);
+  assert.equal(clock.syncToMedia(4, c, 100), 4, 'the element normally drives the clock');
+  assert.equal(clock.syncToMedia(5, c, 200), 5, 'forward motion is accepted');
+  assert.equal(clock.syncToMedia(0.1, c, 300), null,
+    'an element that reset underneath the clock must not drag the playhead backwards');
+  assert.equal(clock.rejection, 'rewind', 'the refusal must be reported as a rewind');
+  assert.equal(clock.time, 5, 'timeline time must hold, not jump back');
+
+  // The guard must also arm while the clock is held mid-handoff.
+  clock.hold(400);
+  assert.equal(clock.syncToMedia(0.2, c, 500), null,
+    'a held clock must refuse a rewind just as a running one does');
+  assert.equal(clock.time, 5, 'a held clock must not jump back either');
+
+  // Small backward motion (a legitimate decoder correction) is still accepted.
+  assert.equal(clock.syncToMedia(4.8, c, 600), 4.8, 'sub-guard backward motion is accepted');
+
+  // A genuine seek re-bases the clock, so the guard must not block it.
+  clock.reset(0.1, 700);
+  assert.equal(clock.syncToMedia(0.1, c, 800), 0.1, 'an explicit seek must re-base the clock');
+
+  // Running past the clip end is a different refusal: the caller must be able
+  // to tell "element reset" from "clip finished".
+  clock.reset(0, 900);
+  clock.syncToMedia(5.9, c, 1000);
+  assert.equal(clock.syncToMedia(20, c, 1100), null, 'an element past the clip end is not the clock');
+  assert.equal(clock.rejection, 'window', 'running past the clip end must report a window refusal');
+}
+
+/* ---------------------------------------------------------------- *
  * 11: bounded + throttled slave corrections (no audio seek storm).
  * ---------------------------------------------------------------- */
 {
@@ -270,6 +309,12 @@ need(/if\(handoffPending\|\|!ownsPlayback\(\)\)return;/, 'clip handoffs must be 
 need(/if\(!ownsPlayback\(\)\|\|!element\|\|resumePending\.has\(element\)\|\|!element\.paused\)return;/,
   'resume requests must be de-duplicated per element');
 need(/if\(audioPending\|\|!ownsPlayback\(\)\)return;/, 'external audio sync must be de-duplicated');
+
+// An abandoned load must never be trusted by the next preview request.
+need(/if\(v\.readyState<1\)\{\s*await new Promise/,
+  'every preview request must wait for usable metadata, not only the one that started the load');
+need("if(timelineClock.rejection==='rewind')",
+  'the tick must hold and re-assert when the element resets, not accept a backward jump');
 
 // 14: recovery is targeted; nothing is rebuilt on the healthy path.
 assert.ok(!renderer.includes('rearmTimelinePreviewAfterScrub'),

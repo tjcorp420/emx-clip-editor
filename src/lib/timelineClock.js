@@ -31,7 +31,13 @@ export const CLOCK_LIMITS={
   /** Minimum spacing between corrective seeks on any one element. */
   slaveCooldownMs:700,
   /** How long the clock may be held before playback is treated as stalled. */
-  stallRecoveryMs:2000
+  stallRecoveryMs:2000,
+  /**
+   * Within one clip, forward playback is monotonic. A derived time that jumps
+   * further back than this means the element reset itself - typically because a
+   * superseded preview request left it mid-load - not that time moved backwards.
+   */
+  rewindGuard:.5
 };
 
 const SPEED_MIN=.25,SPEED_MAX=4;
@@ -72,24 +78,39 @@ export function planSlaveCorrection({expected,actual,now,lastCorrectionAt=-Infin
 }
 
 export function createTimelineClock(){
-  let time=0,lastWall=0,source='idle',heldSince=0;
+  let time=0,lastWall=0,source='idle',heldSince=0,lastClipId=null,rejection=null;
 
   return {
     get time(){return time},
     get source(){return source},
+    /**
+     * Why the last syncToMedia was refused: 'window' when the element sits
+     * outside the clip's trimmed range (it has run past the clip end), or
+     * 'rewind' when the element reset underneath us and must be re-asserted.
+     */
+    get rejection(){return rejection},
 
     reset(t,wallNow){
       time=Math.max(0,Number(t)||0);
       lastWall=Number(wallNow)||0;
       source='idle';
       heldSince=0;
+      lastClipId=null;
+      rejection=null;
       return time;
     },
 
     /** A playing element owns the clock: derive timeline time from it. */
     syncToMedia(mediaTime,clip,wallNow){
       const derived=timelineTimeFromMedia(mediaTime,clip);
-      if(derived===null)return null;
+      if(derived===null){rejection='window';return null}
+      const clipId=clip&&clip.id!==undefined?clip.id:null;
+      if(clipId===lastClipId&&source!=='idle'&&derived<time-CLOCK_LIMITS.rewindGuard){
+        rejection='rewind';
+        return null;
+      }
+      rejection=null;
+      lastClipId=clipId;
       time=derived;
       lastWall=Number(wallNow)||lastWall;
       source='media';
