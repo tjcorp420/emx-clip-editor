@@ -1,8 +1,8 @@
 # CapCut-Style Workflow Parity Matrix
 
-This is a factual implementation tracker for the V1.10 roadmap, not marketing copy. “Available” means connected to the running Electron app; “planned” is not a release promise.
+This is a factual implementation tracker for the V1.11 roadmap, not marketing copy. “Available” means connected to the running Electron app and native export; “planned” is not a release promise.
 
-| Workflow area | Status in 1.10.1 visual-editing foundation | Evidence / next integration boundary |
+| Workflow area | Status in 1.11.0 timed-effects milestone | Evidence / next integration boundary |
 | --- | --- | --- |
 | Dense media browser | Available | Resources Media/Audio tabs, search/sort, display modes, thumbnail sizing, context actions, Ctrl/Shift multi-select, and safe batch project removal. |
 | Folder import choice | Available | A selected folder can import all supported direct children now or become the saved default directory for later selective multi-file import. Native Electron descriptors are normalized before browser-only File operations, preserving trusted native export paths. |
@@ -10,13 +10,16 @@ This is a factual implementation tracker for the V1.10 roadmap, not marketing co
 | Permanent brand watermark | Available | Fixed main-process asset; position/opacity only; no custom logo/text/upload controls; opacity is clamped to 50%–100% in renderer and main process. |
 | In-app update status | Available when an HTTPS build feed is configured | `electron-updater` generic feed, manual download/install UX, version/progress/state reporting. |
 | Automatic checks | Available for update-enabled installed builds | Starts after launch; dev/feedless builds visibly remain Offline. |
-| Video, audio, and image overlay lanes | Available | Timeline click selection is reconciled through render/edit operations. Ctrl/Shift selects multiple clips for batch deletion and batch speed/volume/fade updates; the OVERLAYS lane supports timed image clips. |
+| Video, audio, image overlay, and effect lanes | Available | Timeline click selection is reconciled through render/edit operations. Ctrl/Shift selects multiple clips for batch deletion. PNG, JPG/JPEG, WebP, and GIF imports create timed image overlays; animated effects are independent timed clips. |
+| Precise timeline interaction | Available | Trimmed clips use pointer-offset-aware drag math and can return to 0:00. The playhead is directly draggable. Right-click does not seek, and Split at Playhead preserves the editor's chosen time. |
+| Freeze frame | Available | A video context action splits at the playhead, inserts a two-second held-frame clip, moves the continuation, and exports the held source frame through FFmpeg. |
 | Multiple video/audio tracks | Planned | Requires project schema migration, track UI, z-order compositor, and regression coverage. |
 | Layer compositing | Partially available | Timed image overlays have position, opacity, scale, preview compositing, and FFmpeg export compositing. Multi-video z-order compositing remains planned. |
-| Clip transform and crop | Partially available | Image overlays expose normalized position/scale/opacity. Video crop, rotation, and keyframed transform remain planned. |
+| Clip transform and crop | Partially available | Image overlays expose normalized position/scale/opacity. Vertical export can center-crop or letterbox the whole canvas. Per-clip crop, rotation, subject-aware reframe, and keyframed transform remain planned. |
 | Keyframes | Planned | Requires per-property timeline interpolation. |
 | Text/caption system | Planned | Requires project persistence, typography UI, preview and FFmpeg rendering. |
-| Effect rack and adjustment stack | Available for a curated first library | Searchable Effects and Filters browsers apply named clip looks plus brightness, contrast, saturation, hue, blur, and vignette. Preview and native FFmpeg export use the same visual data. Dynamic/masked effects, body effects, keyframes, and downloadable packs remain planned. |
+| Timed animated effects | Available for eight native effects | Effects are separate from filters. Neon Pulse, Flash Strobe, RGB Wave, Focus Beat, Mono Flicker, Warm Flicker, Nightclub, and Vignette Pulse are draggable EFFECTS-lane clips with move/trim/split/duplicate/delete support. Preview and FFmpeg use the same IDs and time ranges. Body/subject effects, masks, intensity controls, keyframes, and downloadable packs remain planned. |
+| Static filters and color adjustment | Available for a curated library | Filters are per-source static color grades; fine controls cover brightness, contrast, saturation, hue, blur, and vignette. Per-channel HSL, curves, LUT import, wheels, and color matching remain planned. |
 | Video transitions | Available for four native transition types | Dissolve, Dip to Black, Slide Left, and Slide Right are applied between adjacent clips. The preview and FFmpeg graph use the same transition data; advanced wipes, 3D transitions, and transition packs remain planned. |
 | Audio gain/fades/speed | Available | Existing timeline/export controls. |
 | Audio waveform / automation | Planned | Requires cached analysis and curve data in project storage. |
@@ -25,8 +28,20 @@ This is a factual implementation tracker for the V1.10 roadmap, not marketing co
 | Crash recovery / restore point | Planned | Depends on a validated project serializer. |
 | Presets/templates | Planned | Requires persisted versioned project schema and asset packaging policy. |
 | H.264/H.265 export profiles | Planned | Current native MP4 path is verified; profile UI and hardware capability reporting are not represented yet. |
+| TikTok / Reels export | Partially available | 1080×1920, 60 FPS, CRF 20 H.264/AAC export is available with center-crop fill or letterbox. Auto reframe, safe-zone overlays, cover editing, bitrate controls, and direct publishing remain planned. |
 | Captions/transcripts | Planned | Requires local inference/provider policy and editable caption data. |
 | Proxy cache | Planned | Requires explicit cache/cleanup policy and project linking. |
+
+## Current CapCut comparison baseline
+
+The gap list is based on CapCut's current official product documentation, not visual imitation alone:
+
+- CapCut describes effects as timeline content and separates them from filters; it also describes adjustable transition duration and drag/drop transition workflows ([effects and filters](https://www.capcut.com/tools/video-effect-and-filter), [transitions](https://www.capcut.com/tools/video-transition)).
+- Its keyframe system covers position, opacity, scale, rotation, shape, and color with interpolation and speed curves ([keyframe animation](https://www.capcut.com/tools/keyframe-animation)).
+- Its desktop workflow documents masks, blend modes, HSL/curves, speed curves, 9:16 sharing, 4K, bitrate, codec, and up to 60 FPS ([desktop workflow](https://www.capcut.com/resource/how-to-use-capcut)).
+- Official desktop material also identifies auto reframe and auto captions, while separate official tools cover motion tracking, stabilization, and per-channel HSL grading ([desktop editor](https://www.capcut.com/tools/desktop-video-editor), [motion tracking](https://www.capcut.com/tools/motion-tracking), [stabilization](https://www.capcut.com/tools/video-stabilization), [HSL grading](https://www.capcut.com/tools/hsl-color)).
+
+For a high-quality TikTok workflow, the highest-value remaining sequence is: editable text/captions and safe zones; per-clip crop/position/scale with keyframes; project save/autosave; speed curves and beat markers; then auto reframe, tracking, stabilization, masks, and larger effect/transition packs.
 
 ## Quality gates before calling a later milestone complete
 

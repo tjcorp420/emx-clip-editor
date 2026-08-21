@@ -27,14 +27,14 @@
     "noir": { "brightness": -0.06, "contrast": 1.34, "saturation": 0, "blur": 0, "hue": 0, "vignette": 0.38 }
   },
   "effectLibrary": [
-    { "id": "vivid", "title": "Vivid Boost", "category": "Trending", "detail": "Clean contrast and color lift", "swatch": "violet" },
-    { "id": "neon-pop", "title": "Neon Pop", "category": "Trending", "detail": "Punchy gaming color", "swatch": "neon" },
-    { "id": "cinematic", "title": "Cinematic", "category": "Classic", "detail": "Moody contrast and vignette", "swatch": "cinema" },
-    { "id": "soft", "title": "Soft Glow", "category": "Classic", "detail": "Gentle bloom-style softness", "swatch": "pearl" },
-    { "id": "dream-blur", "title": "Dream Blur", "category": "Focus", "detail": "Dreamy soft-focus look", "swatch": "dream" },
-    { "id": "night-game", "title": "Night Game", "category": "Gaming", "detail": "Cool high-contrast gameplay", "swatch": "night" },
-    { "id": "retro", "title": "Retro Tape", "category": "Classic", "detail": "Warm faded color treatment", "swatch": "retro" },
-    { "id": "mono", "title": "Monochrome", "category": "Classic", "detail": "High-contrast black and white", "swatch": "mono" }
+    { "id": "neon-pulse", "title": "Neon Pulse", "category": "Trending", "detail": "Animated contrast and neon color beat", "swatch": "neon", "duration": 3 },
+    { "id": "flash-strobe", "title": "Flash Strobe", "category": "Trending", "detail": "Fast rhythmic highlight flashes", "swatch": "pearl", "duration": 2 },
+    { "id": "rgb-wave", "title": "RGB Wave", "category": "Gaming", "detail": "Animated hue sweep and saturation wave", "swatch": "violet", "duration": 4 },
+    { "id": "focus-beat", "title": "Focus Beat", "category": "Gaming", "detail": "Pulsing soft focus on the beat", "swatch": "dream", "duration": 3 },
+    { "id": "mono-flicker", "title": "Mono Flicker", "category": "Classic", "detail": "Alternating color and monochrome frames", "swatch": "mono", "duration": 3 },
+    { "id": "warm-flicker", "title": "Warm Flicker", "category": "Classic", "detail": "Animated warm exposure shimmer", "swatch": "retro", "duration": 4 },
+    { "id": "nightclub", "title": "Nightclub", "category": "Party", "detail": "Fast saturated nightclub color cycling", "swatch": "night", "duration": 4 },
+    { "id": "vignette-pulse", "title": "Vignette Pulse", "category": "Focus", "detail": "Animated edge-darkening focus pulse", "swatch": "cinema", "duration": 3 }
   ],
   "filterLibrary": [
     { "id": "cream", "title": "Cream", "category": "Featured", "detail": "Warm softened highlights", "swatch": "cream" },

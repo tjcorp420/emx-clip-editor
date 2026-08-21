@@ -151,6 +151,35 @@ function normalizedOverlay(c={}) {
     visual:normalizeClipVisual(c.visual)
   };
 }
+function timedEffectFilter(c={}) {
+  const start=Math.max(0,n(c.start,0));
+  const speed=clamp(n(c.speed,1),.25,4);
+  const trimStart=Math.max(0,n(c.trimStart,0));
+  const trimEnd=Math.max(trimStart+.01,n(c.trimEnd,trimStart+.01));
+  const end=start+(trimEnd-trimStart)/speed;
+  const s=start.toFixed(6),e=end.toFixed(6),phase=`(t-${s}+${trimStart.toFixed(6)})`;
+  const enabled=`enable='between(t,${s},${e})'`;
+  switch(c.effectId) {
+    case 'neon-pulse':
+      return `eq=brightness='0.03+0.08*(sin(4*PI*${phase})+1)/2':contrast='1+0.22*(sin(4*PI*${phase})+1)/2':saturation='1+0.5*(sin(4*PI*${phase})+1)/2':eval=frame:${enabled},hue=h='12*sin(2*PI*${phase})':${enabled}`;
+    case 'flash-strobe':
+      return `eq=brightness='0.38*gt(sin(12*PI*${phase})\,0.72)':contrast=1.12:eval=frame:${enabled}`;
+    case 'rgb-wave':
+      return `hue=h='55*sin(1.5*PI*${phase})':s='1.25+0.2*(sin(3*PI*${phase})+1)/2':${enabled}`;
+    case 'focus-beat':
+      return `gblur=sigma=2.4:${enabled},eq=contrast='1+0.16*(1-(sin(2.6*PI*${phase})+1)/2)':eval=frame:${enabled}`;
+    case 'mono-flicker':
+      return `hue=s='0.05+0.95*lte(sin(8*PI*${phase})\,0.1)':${enabled},eq=contrast=1.14:${enabled}`;
+    case 'warm-flicker':
+      return `eq=brightness='0.03+0.07*(sin(6.2*PI*${phase})+1)/2':saturation=1.12:eval=frame:${enabled},hue=h='8+12*sin(2.2*PI*${phase})':${enabled}`;
+    case 'nightclub':
+      return `hue=h='100*sin(3.6*PI*${phase})':s=1.5:${enabled},eq=contrast=1.15:${enabled}`;
+    case 'vignette-pulse':
+      return `vignette=angle='PI/(4+1.4*sin(2.4*PI*${phase}))':eval=frame:${enabled},eq=brightness='-0.04*(sin(2.4*PI*${phase})+1)/2':eval=frame:${enabled}`;
+    default:
+      return '';
+  }
+}
 function buildExportArgs(project, probeByPath, outputPath) {
   const width = Math.max(320, Math.round(n(project.export?.width,1920)));
   const height = Math.max(240, Math.round(n(project.export?.height,1080)));
@@ -160,6 +189,8 @@ function buildExportArgs(project, probeByPath, outputPath) {
   const videos = [...(project.videoClips||[])].sort((a,b)=>n(a.start)-n(b.start));
   const audios = [...(project.audioClips||[])].sort((a,b)=>n(a.start)-n(b.start));
   const overlays = [...(project.overlayClips||[])].sort((a,b)=>n(a.start)-n(b.start));
+  const effectClips = [...(project.effectClips||[])].sort((a,b)=>n(a.start)-n(b.start));
+  const fit = project.export?.fit==='contain'?'contain':'cover';
 
   const inputs = [];
   const filters = [`color=c=black:s=${width}x${height}:r=${fps}:d=${dur.toFixed(6)}[base]`];
@@ -173,17 +204,26 @@ function buildExportArgs(project, probeByPath, outputPath) {
     const start = Math.max(0,n(c.start,0));
     const visual = combinedVisual(project.effects, c.visual);
     const outDur=(trimEnd-trimStart)/speed;
-
-    const fx = [
+    const freezeSource=clamp(n(c.freezeSourceTime,0),0,Number.MAX_SAFE_INTEGER);
+    const sourceTiming=c.isFreeze?[
+      `trim=start=${freezeSource.toFixed(6)}:end=${(freezeSource+Math.max(.02,1/fps)).toFixed(6)}`,
+      'setpts=PTS-STARTPTS',
+      `tpad=stop_mode=clone:stop_duration=${outDur.toFixed(6)}`,
+      `trim=duration=${outDur.toFixed(6)}`
+    ]:[
       `trim=start=${trimStart}:end=${trimEnd}`,
       'setpts=PTS-STARTPTS',
-      `setpts=PTS/${speed}`,
+      `setpts=PTS/${speed}`
+    ];
+
+    const fx = [
+      ...sourceTiming,
       `eq=brightness=${visual.brightness}:contrast=${visual.contrast}:saturation=${visual.saturation}`,
       visual.hue!==0 ? `hue=h=${visual.hue}` : null,
       visual.blur>0 ? `gblur=sigma=${visual.blur}` : null,
       visual.vignette>0 ? `vignette=angle=${(1.6-visual.vignette*1.2).toFixed(6)}` : null,
-      `scale=${width}:${height}:force_original_aspect_ratio=decrease`,
-      `pad=${width}:${height}:(ow-iw)/2:(oh-ih)/2:black`,
+      `scale=${width}:${height}:force_original_aspect_ratio=${fit==='cover'?'increase':'decrease'}`,
+      fit==='cover'?`crop=${width}:${height}`:`pad=${width}:${height}:(ow-iw)/2:(oh-ih)/2:black`,
       `fps=${fps}`,
       'format=rgba',
       ...videoTransitionFilters(c,outDur),
@@ -191,7 +231,7 @@ function buildExportArgs(project, probeByPath, outputPath) {
     ].filter(Boolean).join(',');
     filters.push(`[${i}:v]${fx}[vid${i}]`);
 
-    if (hasAudio(probeByPath.get(c.path))) {
+    if (!c.isFreeze && hasAudio(probeByPath.get(c.path))) {
       const delay = Math.round(start*1000);
       const volume = clamp(n(c.volume,1),0,4);
       filters.push(
@@ -265,6 +305,14 @@ function buildExportArgs(project, probeByPath, outputPath) {
     filters.push(`[${inputIndex}:v]${fx}[${label}]`);
     const next=`overlayComp${index}`;
     filters.push(`[${composited}][${label}]overlay=x=${position.x}:y=${position.y}:eof_action=pass:repeatlast=0:shortest=0[${next}]`);
+    composited=next;
+  });
+
+  effectClips.forEach((clip,index)=>{
+    const effectFilter=timedEffectFilter(clip);
+    if(!effectFilter)return;
+    const next=`effectComp${index}`;
+    filters.push(`[${composited}]${effectFilter}[${next}]`);
     composited=next;
   });
 
@@ -358,6 +406,6 @@ async function versionLine(binary) {
 }
 
 module.exports={
-  projectDuration,atempoChain,probe,hasAudio,buildExportArgs,validateProject,
+  projectDuration,atempoChain,probe,hasAudio,timedEffectFilter,buildExportArgs,validateProject,
   exportProject,extractAudio,versionLine,run
 };

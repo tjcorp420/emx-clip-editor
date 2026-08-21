@@ -95,4 +95,18 @@ for (const token of [
   assert.ok(s.includes(token), `V1.9 visual editing contract missing ${token}.`);
 }
 
+for (const token of [
+  'effectClips:[]',
+  'id="effectLane"',
+  'application/x-emx-effect-id',
+  'Split at Playhead',
+  'Freeze Frame at Playhead',
+  'Move Clip to Playhead',
+  'timelineTimeFromClientX',
+  'TikTok / Reels 9:16',
+  'id="exportFit"'
+]) {
+  assert.ok(s.includes(token), `V1.11 timeline/effects contract missing ${token}.`);
+}
+
 console.log('EMX UI CONTRACT SMOKE TEST: PASS');

@@ -43,6 +43,12 @@ export function magneticStartForClips(candidate,movingClip,trackClips,snapEnable
   return Math.max(0,Math.round(best*1000)/1000);
 }
 
+export function timelineStartFromPointer(pointerX,laneLeft,pxPerSec,pointerOffsetSec=0){
+  const scale=Math.max(1,Number(pxPerSec)||1);
+  const position=(Number(pointerX)||0)-(Number(laneLeft)||0);
+  return Math.max(0,position/scale-(Number(pointerOffsetSec)||0));
+}
+
 export function trimLeftByDelta(clip,deltaTimelineSeconds){
   const c={...clip};
   const speed=Math.max(.25,Math.min(4,Number(c.speed)||1));

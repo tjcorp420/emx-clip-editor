@@ -1,21 +1,21 @@
 
 import './style.css';
 import { getStemEngineStatus } from './lib/stems.js';
-import { clipDuration, clipAtTime as timelineClipAtTime, magneticStartForClips, trimLeftByDelta, trimRightByDelta, splitClipAtTime } from './lib/timelineMath.js';
+import { clipDuration, clipAtTime as timelineClipAtTime, magneticStartForClips, timelineStartFromPointer, trimLeftByDelta, trimRightByDelta, splitClipAtTime } from './lib/timelineMath.js';
 import { reconcileSelection, selectIds } from './lib/selection.js';
 import { normalizeImportInput } from './lib/importInput.js';
 import visualConfig from '../electron/visuals.json';
 
 const app=document.querySelector('#app');
 const state={
-  media:[],videoClips:[],audioClips:[],overlayClips:[],selectedMediaId:null,selectedClipId:null,
+  media:[],videoClips:[],audioClips:[],overlayClips:[],effectClips:[],selectedMediaId:null,selectedClipId:null,
   selectedMediaIds:new Set(),selectedClipIds:new Set(),mediaSelectionAnchorId:null,clipSelectionAnchorId:null,
   playhead:0,pxPerSec:10,isPlaying:false,timelinePlaying:false,fitTimeline:true,timelinePreview:true,timelineTimer:null,activeTimelineClipId:null,previewRequestId:0,previewMuted:false,scrubbing:false,scrubPreviewTimer:null,renderBusy:false,renderStartedAt:0,
   history:[],future:[],
   branding:{position:'bottom-right',opacity:.78},
   mediaView:'grid',mediaThumbnailSize:132,
   effects:{brightness:0,contrast:1,saturation:1,blur:0},
-  export:{crf:23,width:1920,height:1080,fps:60,preset:'veryfast'},
+  export:{crf:20,width:1080,height:1920,fps:60,preset:'veryfast',fit:'cover'},
   settings:{snap:true,previewQuality:'high',defaultVolume:1,autoplayPreview:true,defaultImportFolder:''},
   ffmpegLog:''
 };
@@ -24,7 +24,7 @@ const uid=()=>crypto.randomUUID?.()||`${Date.now()}_${Math.random().toString(16)
 app.innerHTML=`
 <div class="app">
 <header class="topbar">
-  <div class="brand"><img class="logo" src="./emx-logo.png" onerror="this.style.display='none'" alt="EMX"><div><h1>EMX CLIP STUDIO</h1><small id="appVersionLabel">Desktop Timeline Editor • V1.10.1</small></div></div>
+  <div class="brand"><img class="logo" src="./emx-logo.png" onerror="this.style.display='none'" alt="EMX"><div><h1>EMX CLIP STUDIO</h1><small id="appVersionLabel">Desktop Timeline Editor • V1.11.0</small></div></div>
   <div class="top-actions">
     <button class="btn undo-last" id="undoLastBtn" disabled>↶ UNDO LAST</button><button class="btn" id="redoBtn" disabled>↷ Redo</button><button class="btn" id="newProject">New</button>
     <button class="btn" id="openFolder">📁 Clips Folder</button>
@@ -127,9 +127,17 @@ app.innerHTML=`
 
     <div id="insEffects" style="display:none">
       <div class="group visual-library-group"><h3>VIDEO EFFECTS</h3>
-        <div id="effectLibraryHint" class="status warn">Select a video or image overlay on the timeline, then choose an effect. Effects are rendered in preview and native MP4 export.</div>
+        <div id="effectLibraryHint" class="status warn">Add video to the timeline, then click an animated effect or drag it onto the EFFECTS track. Effect clips can be moved, split, and trimmed.</div>
         <input id="effectSearch" class="visual-search" type="search" placeholder="Search effects" aria-label="Search effects">
         <div id="effectLibrary" class="visual-library" aria-live="polite"></div>
+      </div>
+    </div>
+
+    <div id="insFilters" style="display:none">
+      <div class="group visual-library-group"><h3>STATIC FILTERS</h3>
+        <div id="filterLibraryHint" class="status warn">Select a video or image overlay on the timeline, then choose a static color filter. Filters are baked into exported MP4s.</div>
+        <input id="filterSearch" class="visual-search" type="search" placeholder="Search filters" aria-label="Search filters">
+        <div id="filterLibrary" class="visual-library" aria-live="polite"></div>
       </div>
       <div class="group"><h3>FINE-TUNE SELECTED CLIP</h3>
         <div id="clipVisualHint" class="status warn">Select a video or image overlay on the timeline to apply a visual preset or precise adjustments.</div>
@@ -141,19 +149,11 @@ app.innerHTML=`
         <div class="field"><label>Soft Blur <span id="clipBlurVal">0.0</span></label><input id="clipBlur" type="range" min="0" max="10" step=".1" value="0"></div>
         <div class="field"><label>Vignette <span id="clipVignetteVal">0%</span></label><input id="clipVignette" type="range" min="0" max="1" step=".01" value="0"></div>
       </div>
-      <div class="group"><h3>GLOBAL VIDEO EFFECTS</h3>
+      <div class="group"><h3>GLOBAL COLOR ADJUSTMENT</h3>
         <div class="field"><label>Brightness <span id="brightnessVal">0.00</span></label><input id="brightness" type="range" min="-.5" max=".5" step=".01" value="0"></div>
         <div class="field"><label>Contrast <span id="contrastVal">1.00</span></label><input id="contrast" type="range" min=".5" max="2" step=".01" value="1"></div>
         <div class="field"><label>Saturation <span id="saturationVal">1.00</span></label><input id="saturation" type="range" min="0" max="2" step=".01" value="1"></div>
         <div class="field"><label>Blur <span id="blurVal">0</span></label><input id="blur" type="range" min="0" max="10" step=".1" value="0"></div>
-      </div>
-    </div>
-
-    <div id="insFilters" style="display:none">
-      <div class="group visual-library-group"><h3>FILTERS</h3>
-        <div id="filterLibraryHint" class="status warn">Select a video or image overlay on the timeline, then choose a filter. Filters are baked into exported MP4s.</div>
-        <input id="filterSearch" class="visual-search" type="search" placeholder="Search filters" aria-label="Search filters">
-        <div id="filterLibrary" class="visual-library" aria-live="polite"></div>
       </div>
     </div>
 
@@ -220,9 +220,10 @@ app.innerHTML=`
 
     <div id="insExport" style="display:none">
       <div class="group"><h3>MP4 EXPORT</h3>
-        <div class="field"><label>Resolution</label><select id="exportResolution"><option value="1920x1080">1920×1080</option><option value="1280x720">1280×720</option></select></div>
+        <div class="field"><label>Resolution</label><select id="exportResolution"><option value="1080x1920">TikTok / Reels 9:16 • 1080×1920</option><option value="1920x1080">Landscape 16:9 • 1920×1080</option><option value="1280x720">Landscape 16:9 • 1280×720</option></select></div>
+        <div class="field"><label>Canvas Framing</label><select id="exportFit"><option value="cover">Fill canvas • center crop</option><option value="contain">Fit full clip • letterbox</option></select></div>
         <div class="field"><label>Frame Rate</label><select id="exportFps"><option value="60">60 FPS</option><option value="30">30 FPS</option></select></div>
-        <div class="field"><label>Quality CRF <span id="crfVal">23</span></label><input id="crf" type="range" min="18" max="32" step="1" value="23"></div>
+        <div class="field"><label>Quality CRF <span id="crfVal">20</span></label><input id="crf" type="range" min="18" max="32" step="1" value="20"></div>
         <div id="exportEngineStatus" class="status good">Desktop export uses native FFmpeg + FFprobe with output verification.</div>
       </div>
     </div>
@@ -271,6 +272,7 @@ app.innerHTML=`
       <div class="track"><div class="track-label">VIDEO</div><div class="track-lane" id="videoLane"></div></div>
       <div class="track"><div class="track-label">AUDIO</div><div class="track-lane" id="audioLane"></div></div>
       <div class="track overlay-track"><div class="track-label">OVERLAYS</div><div class="track-lane" id="overlayLane"></div></div>
+      <div class="track effect-track"><div class="track-label">EFFECTS</div><div class="track-lane" id="effectLane"></div></div>
       <div class="playhead" id="playhead"></div>
     </div>
   </div>
@@ -310,9 +312,11 @@ app.innerHTML=`
 </div>
 <div class="clip-context" id="clipContext">
   <div class="context-title">CLIP ACTIONS</div>
-  <button data-action="split">✂ Split Here</button>
+  <button data-action="split">✂ Split at Playhead</button>
   <button data-action="trim-start">Trim Start to Playhead</button>
   <button data-action="trim-end">Trim End to Playhead</button>
+  <button data-action="freeze">❄ Freeze Frame at Playhead</button>
+  <button data-action="move-playhead">↦ Move Clip to Playhead</button>
   <button data-action="duplicate">Duplicate</button>
   <button data-action="separate">🎵 Separate Audio to Track</button>
   <button data-action="mute">🔇 Mute / Unmute Clip</button>
@@ -471,7 +475,8 @@ function normalizeClipVisual(visual={}){
 }
 function clipVisual(clip){return normalizeClipVisual(clip?.visual)}
 function trackAcceptsMedia(track,media){return track==='overlay'?media?.type==='image':media?.type===track}
-function clipCollectionForType(type){return type==='audio'?state.audioClips:type==='overlay'?state.overlayClips:state.videoClips}
+function clipCollectionForType(type){return type==='audio'?state.audioClips:type==='overlay'?state.overlayClips:type==='effect'?state.effectClips:state.videoClips}
+function allTimelineClips(){return [...state.videoClips,...state.audioClips,...state.overlayClips,...state.effectClips]}
 
 async function addMediaItems(items){
   let count=0,added=[];
@@ -519,7 +524,7 @@ function visibleMedia(){
 
 function orderedMediaIds(){return state.media.map(media=>media.id)}
 function orderedTimelineClipIds(){
-  return [...state.videoClips,...state.audioClips,...state.overlayClips]
+  return allTimelineClips()
     .sort((left,right)=>left.start-right.start||left.type.localeCompare(right.type)||left.id.localeCompare(right.id))
     .map(clip=>clip.id);
 }
@@ -529,7 +534,7 @@ function selectedMediaItems(){
 }
 function selectedTimelineClips(){
   state.selectedClipIds=reconcileSelection(state.selectedClipIds,orderedTimelineClipIds());
-  return [...state.videoClips,...state.audioClips,...state.overlayClips].filter(clip=>state.selectedClipIds.has(clip.id));
+  return allTimelineClips().filter(clip=>state.selectedClipIds.has(clip.id));
 }
 function reconcileActiveSelections(){
   const media=selectedMediaItems();
@@ -610,6 +615,7 @@ function captureEditState(){
     videoClips:state.videoClips.map(c=>({...c})),
     audioClips:state.audioClips.map(c=>({...c})),
     overlayClips:state.overlayClips.map(c=>({...c,visual:{...clipVisual(c)}})),
+    effectClips:state.effectClips.map(c=>({...c})),
     effects:{...state.effects},
     branding:{...state.branding}
   };
@@ -630,6 +636,7 @@ function restoreEditState(snapshot){
   state.videoClips=snapshot.videoClips.map(c=>({...c}));
   state.audioClips=snapshot.audioClips.map(c=>({...c}));
   state.overlayClips=(snapshot.overlayClips||[]).map(c=>({...c,visual:clipVisual(c)}));
+  state.effectClips=(snapshot.effectClips||[]).map(c=>({...c}));
   state.effects={...snapshot.effects};
   state.branding={...snapshot.branding};
   state.selectedClipId=null;state.selectedClipIds=new Set();state.clipSelectionAnchorId=null;
@@ -796,7 +803,7 @@ function addClip(mediaId,track,explicitStart=null){
   if(media)addMediaItemsToTimeline([media],track,explicitStart);
 }
 function addSelectedMediaToTimeline(){addMediaItemsToTimeline(selectedMediaItems())}
-function findClip(id){return state.videoClips.find(c=>c.id===id)||state.audioClips.find(c=>c.id===id)||state.overlayClips.find(c=>c.id===id)}
+function findClip(id){return allTimelineClips().find(c=>c.id===id)}
 function clipTimelineDuration(c){return clipDuration(c)}
 function selectClip(id,selectionOptions={}){
   setClipSelection(id,selectionOptions);
@@ -856,24 +863,35 @@ function magneticStart(candidate,movingClip,trackClips){
   return magneticStartForClips(candidate,movingClip,trackClips,state.settings.snap,state.pxPerSec);
 }
 
+function effectDefinition(id){return (visualConfig.effectLibrary||[]).find(item=>item.id===id)||null}
+function effectClipLabel(clip){return effectDefinition(clip.effectId)?.title||clip.name||'Animated Effect'}
+function timelineClipWidth(clip){return Math.max(24,clipTimelineDuration(clip)*state.pxPerSec)}
+
 function renderLane(lane,clips,trackType='video'){
   const audio=trackType==='audio';
   const overlay=trackType==='overlay';
+  const effect=trackType==='effect';
   lane.innerHTML='';
   clips.forEach(c=>{
-    const d=document.createElement('div');d.className=`clip ${audio?'audio':''} ${overlay?'overlay':''} ${state.selectedClipIds.has(c.id)?'selected':''}`;d.dataset.clip=c.id;
-    d.style.left=`${c.start*state.pxPerSec}px`;d.style.width=`${Math.max(48,clipTimelineDuration(c)*state.pxPerSec)}px`;
-    const bg=audio&&c.waveform?waveformSvg(c.waveform):c.thumb;
+    const d=document.createElement('div');d.className=`clip ${audio?'audio':''} ${overlay?'overlay':''} ${effect?'effect':''} ${state.selectedClipIds.has(c.id)?'selected':''}`;d.dataset.clip=c.id;
+    d.style.left=`${c.start*state.pxPerSec}px`;d.style.width=`${timelineClipWidth(c)}px`;
+    const bg=effect?'':audio&&c.waveform?waveformSvg(c.waveform):c.thumb;
     const transition=c.transitionOut&&c.transitionOut!=='none'?` • ◇ ${transitionLabel(c.transitionOut)} ${Number(c.transitionDuration||.45).toFixed(2)}s`:'';
-    d.innerHTML=`<div class="clip-bg" ${bg?`style="background-image:url('${bg}')"`:''}></div><div class="clip-shade"></div><div class="trim-handle left" title="Drag left/right to trim start"><span>‹</span></div><div class="trim-handle right" title="Drag left/right to trim end"><span>›</span></div><div class="clip-title">${overlay?'🖼️ ':''}${c.name}</div><div class="clip-sub">${fmt(c.trimStart)} → ${fmt(c.trimEnd)}${overlay?` • ${Math.round((c.opacity??1)*100)}%`: ` • ${c.speed.toFixed(2)}×${transition}`}</div>`;
+    const title=effect?`✦ ${effectClipLabel(c)}`:`${c.isFreeze?'❄ ':overlay?'🖼️ ':''}${c.name}`;
+    const subtitle=effect?`${fmt(clipTimelineDuration(c))} • ANIMATED`: `${fmt(c.trimStart)} → ${fmt(c.trimEnd)}${overlay?` • ${Math.round((c.opacity??1)*100)}%`: ` • ${Number(c.speed||1).toFixed(2)}×${transition}`}`;
+    d.innerHTML=`<div class="clip-bg" ${bg?`style="background-image:url('${bg}')"`:''}></div><div class="clip-shade"></div><div class="trim-handle left" title="Drag left/right to trim start"><span>‹</span></div><div class="trim-handle right" title="Drag left/right to trim end"><span>›</span></div><div class="clip-title">${title}</div><div class="clip-sub">${subtitle}</div>`;
     lane.appendChild(d);
-    let sx=0,orig=0,dragMoved=false;
+    let sx=0,dragPointerOffset=0,dragMoved=false;
     d.addEventListener('pointerdown',e=>{
       if(e.button!==0||e.target.closest('.trim-handle'))return;
+      e.preventDefault();
       const modifiers=modifierSelection(e);
       selectClip(c.id,modifiers);
       if(modifiers.toggle||modifiers.range)return;
-      sx=e.clientX;orig=c.start;d.setPointerCapture(e.pointerId);
+      const rect=lane.getBoundingClientRect();
+      sx=e.clientX;
+      dragPointerOffset=(e.clientX-rect.left)/Math.max(1,state.pxPerSec)-c.start;
+      d.setPointerCapture(e.pointerId);
     });
     d.addEventListener('pointermove',e=>{
       if(!d.hasPointerCapture(e.pointerId))return;
@@ -883,7 +901,8 @@ function renderLane(lane,clips,trackType='video'){
         pushHistory('Move clip');
         state.fitTimeline=false;$('fitTimelineBtn').classList.remove('primary');
       }
-      let next=orig+(e.clientX-sx)/state.pxPerSec;
+      const rect=lane.getBoundingClientRect();
+      let next=timelineStartFromPointer(e.clientX,rect.left,state.pxPerSec,dragPointerOffset);
       next=magneticStart(next,c,clips);
       c.start=Math.max(0,next);
       d.style.left=`${c.start*state.pxPerSec}px`;
@@ -900,14 +919,15 @@ function renderLane(lane,clips,trackType='video'){
       }
       dragMoved=false;
     });
+    d.addEventListener('pointercancel',()=>{dragMoved=false});
     const leftHandle=d.querySelector('.trim-handle.left');
     const rightHandle=d.querySelector('.trim-handle.right');
 
     function updateClipGeometry(){
       d.style.left=`${c.start*state.pxPerSec}px`;
-      d.style.width=`${Math.max(48,clipTimelineDuration(c)*state.pxPerSec)}px`;
+      d.style.width=`${timelineClipWidth(c)}px`;
       const sub=d.querySelector('.clip-sub');
-      if(sub)sub.textContent=`${fmt(c.trimStart)} → ${fmt(c.trimEnd)}${overlay?` • ${Math.round((c.opacity??1)*100)}%`:` • ${c.speed.toFixed(2)}×${c.transitionOut&&c.transitionOut!=='none'?` • ◇ ${transitionLabel(c.transitionOut)} ${Number(c.transitionDuration||.45).toFixed(2)}s`:''}`}`;
+      if(sub)sub.textContent=effect?`${fmt(clipTimelineDuration(c))} • ANIMATED`:`${fmt(c.trimStart)} → ${fmt(c.trimEnd)}${overlay?` • ${Math.round((c.opacity??1)*100)}%`:` • ${Number(c.speed||1).toFixed(2)}×${c.transitionOut&&c.transitionOut!=='none'?` • ◇ ${transitionLabel(c.transitionOut)} ${Number(c.transitionDuration||.45).toFixed(2)}s`:''}`}`;
     }
 
     leftHandle.addEventListener('pointerdown',e=>{
@@ -957,10 +977,6 @@ function renderLane(lane,clips,trackType='video'){
     d.addEventListener('contextmenu',e=>{
       e.preventDefault();
       if(!state.selectedClipIds.has(c.id))selectClip(c.id);
-      const rect=lane.getBoundingClientRect();
-      const cursorTime=Math.max(c.start,Math.min(c.start+clipTimelineDuration(c)-.01,(e.clientX-rect.left)/Math.max(1,state.pxPerSec)));
-      state.playhead=cursorTime;
-      previewTimelineAt(cursorTime,false);
       showClipContext(c,e.clientX,e.clientY);
     });
   });
@@ -976,6 +992,7 @@ function renderTimeline(allowFit=true){
   renderLane($('videoLane'),state.videoClips,'video');
   renderLane($('audioLane'),state.audioClips,'audio');
   renderLane($('overlayLane'),state.overlayClips,'overlay');
+  renderLane($('effectLane'),state.effectClips,'effect');
   renderPlayhead();
 }
 
@@ -998,6 +1015,24 @@ function groupLibraryItems(items,query){
   const normalized=String(query||'').trim().toLocaleLowerCase();
   return (items||[]).filter(item=>!normalized||`${item.title} ${item.category} ${item.detail}`.toLocaleLowerCase().includes(normalized));
 }
+function addEffectClip(effectId,start=state.playhead){
+  const definition=effectDefinition(effectId);
+  if(!definition)return;
+  if(!state.videoClips.length)return notify('Add a video clip before adding an animated effect.','warn');
+  const projectLength=projectEnd();
+  const requestedStart=bounded(start,0,Math.max(0,projectLength-.05),0);
+  const duration=Math.max(.25,Math.min(Number(definition.duration)||3,projectLength-requestedStart));
+  if(duration<.05)return notify('Move the playhead inside the video project before adding an effect.','warn');
+  pushHistory(`Add ${definition.title} effect`);
+  const clip={
+    id:uid(),effectId:definition.id,name:definition.title,type:'effect',start:requestedStart,
+    trimStart:0,trimEnd:duration,duration:Math.max(600,projectLength),speed:1,volume:1,fadeIn:0,fadeOut:0
+  };
+  state.effectClips.push(clip);state.effectClips.sort((a,b)=>a.start-b.start);
+  state.selectedClipIds=new Set([clip.id]);state.selectedClipId=clip.id;state.clipSelectionAnchorId=clip.id;
+  state.timelinePreview=true;renderTimeline();updateInspector();previewTimelineAt(state.playhead,false);
+  notify(`${definition.title} added to the EFFECTS track`,'success');
+}
 function renderVisualCardLibrary(containerId,items,query,kind){
   const container=$(containerId);if(!container)return;
   const visible=groupLibraryItems(items,query);
@@ -1009,19 +1044,27 @@ function renderVisualCardLibrary(containerId,items,query,kind){
   visible.forEach(item=>{const group=grouped.get(item.category)||[];group.push(item);grouped.set(item.category,group)});
   const selected=selectedVisualClips();
   const primary=selected.find(clip=>clip.id===state.selectedClipId)||selected.at(-1)||null;
-  const activeId=primary?matchingVisualPreset(clipVisual(primary)):'';
+  const activeId=kind==='effect'&&state.selectedClipIds.size===1&&findClip(state.selectedClipId)?.type==='effect'?findClip(state.selectedClipId).effectId:primary?matchingVisualPreset(clipVisual(primary)):'';
   for(const [category,entries] of grouped){
     const section=document.createElement('section');section.className='visual-library-section';
     const heading=document.createElement('div');heading.className='visual-library-heading';heading.textContent=category;section.appendChild(heading);
     const grid=document.createElement('div');grid.className='visual-card-grid';
     entries.forEach(item=>{
-      const button=document.createElement('button');button.type='button';button.className=`visual-card ${activeId===item.id?'selected':''}`;button.disabled=!selected.length;
-      button.title=`Apply ${item.title}: ${item.detail}`;
+      const button=document.createElement('button');button.type='button';button.className=`visual-card ${activeId===item.id?'selected':''}`;button.disabled=kind!=='effect'&&!selected.length;
+      button.title=kind==='effect'?`Drag ${item.title} to the EFFECTS track or click to add it at the playhead.`:`Apply ${item.title}: ${item.detail}`;
+      if(kind==='effect'){
+        button.draggable=true;
+        button.addEventListener('dragstart',event=>{
+          event.dataTransfer.effectAllowed='copy';
+          event.dataTransfer.setData('application/x-emx-effect-id',item.id);
+          event.dataTransfer.setData('text/plain',item.id);
+        });
+      }
       const swatch=document.createElement('span');swatch.className='visual-card-swatch';swatch.dataset.swatch=item.swatch||'violet';
       const title=document.createElement('span');title.className='visual-card-title';title.textContent=item.title;
       const detail=document.createElement('span');detail.className='visual-card-detail';detail.textContent=item.detail;
       button.append(swatch,title,detail);
-      button.addEventListener('click',()=>applyVisualPreset(item.id,item.title));
+      button.addEventListener('click',()=>kind==='effect'?addEffectClip(item.id,state.playhead):applyVisualPreset(item.id,item.title));
       grid.appendChild(button);
     });
     section.appendChild(grid);container.appendChild(section);
@@ -1062,8 +1105,8 @@ function renderTransitionLibrary(){
 function updateVisualLibraryState(){
   const clips=selectedVisualClips();
   const effectHint=$('effectLibraryHint'),filterHint=$('filterLibraryHint');
-  const message=clips.length>1?`${clips.length} visual clips selected. Applying a look updates all of them.`:'Select a video or image overlay on the timeline, then choose a look. Effects are rendered in preview and native MP4 export.';
-  [effectHint,filterHint].forEach(hint=>{if(!hint)return;hint.className=clips.length?'status good':'status warn';hint.textContent=clips.length?message:hint.id==='filterLibraryHint'?'Select a video or image overlay on the timeline, then choose a filter. Filters are baked into exported MP4s.':message});
+  if(effectHint){effectHint.className=state.videoClips.length?'status good':'status warn';effectHint.textContent=state.videoClips.length?'Drag an effect onto the EFFECTS track or click it to add at the playhead. Then move, split, or trim its timeline clip.':'Add video to the timeline before adding an animated effect.'}
+  if(filterHint){filterHint.className=clips.length?'status good':'status warn';filterHint.textContent=clips.length?(clips.length>1?`${clips.length} visual clips selected. Applying a filter updates all of them.`:'Choose a static color filter for the selected clip. Filters are baked into exported MP4s.'):'Select a video or image overlay on the timeline, then choose a filter.'}
   renderVisualCardLibrary('effectLibrary',visualConfig.effectLibrary,$('effectSearch')?.value||'','effect');
   renderVisualCardLibrary('filterLibrary',visualConfig.filterLibrary,$('filterSearch')?.value||'','filter');
   renderTransitionLibrary();
@@ -1102,11 +1145,13 @@ function updateInspector(){
   const selected=selectedTimelineClips();
   const c=selected.find(clip=>clip.id===state.selectedClipId)||selected.at(-1)||null;
   const multiple=selected.length>1;
+  const effectOnly=Boolean(c&&c.type==='effect');
   $('selectionType').textContent=multiple?`${selected.length} CLIPS`:(c?c.type.toUpperCase():(state.selectedMediaId?'MEDIA':'NONE'));
 
   const timelineOnly=['clipStart','trimIn','trimOut','speed','volume','fadeIn','fadeOut','duplicateClip','deleteClip'];
   timelineOnly.forEach(id=>{ const el=$(id); if(el)el.disabled=!c; });
   ['clipStart','trimIn','trimOut','duplicateClip'].forEach(id=>$(id).disabled=!c||multiple);
+  ['speed','volume','fadeIn','fadeOut'].forEach(id=>$(id).disabled=!c||effectOnly);
   $('overlayLayoutGroup').hidden=!c||c.type!=='overlay'||multiple;
   $('transitionGroup').hidden=!c||c.type!=='video'||multiple;
   ['overlayPosition','overlayOpacity','overlayScale'].forEach(id=>$(id).disabled=!c||c.type!=='overlay'||multiple);
@@ -1119,7 +1164,8 @@ function updateInspector(){
     $('clipHint').textContent=`${selected.length} timeline clips selected. Speed, volume, and fades apply to all selected clips; timing and trim stay single-clip to prevent accidental edits.`;
   }else{
     $('clipHint').className='status warn';
-    $('clipHint').textContent='Add a media item to the timeline, then click the timeline clip to edit Trim, Speed and Clip Volume.';
+    $('clipHint').textContent=effectOnly?'Animated effect selected. Move it on the EFFECTS track or edit its start, trim range, split, and duration.':'Add a media item to the timeline, then click the timeline clip to edit Trim, Speed and Clip Volume.';
+    if(effectOnly){$('clipHint').style.display='block';$('clipHint').className='status good'}
   }
 
   if(!c){
@@ -1137,13 +1183,13 @@ function updateInspector(){
   $('trimOut').max=c.duration;
   $('trimIn').value=c.trimStart;
   $('trimOut').value=c.trimEnd;
-  $('speed').value=c.speed;
-  $('volume').value=c.volume;$('fadeIn').value=c.fadeIn||0;$('fadeOut').value=c.fadeOut||0;
+  $('speed').value=c.speed||1;
+  $('volume').value=c.volume??1;$('fadeIn').value=c.fadeIn||0;$('fadeOut').value=c.fadeOut||0;
   $('startVal').textContent=fmt(c.start);
   $('trimInVal').textContent=fmt(c.trimStart);
   $('trimOutVal').textContent=fmt(c.trimEnd);
-  $('speedVal').textContent=c.speed.toFixed(2)+'×';
-  $('volumeVal').textContent=Math.round(c.volume*100)+'%';$('fadeInVal').textContent=(c.fadeIn||0).toFixed(2)+'s';$('fadeOutVal').textContent=(c.fadeOut||0).toFixed(2)+'s';
+  $('speedVal').textContent=effectOnly?'FIXED':Number(c.speed||1).toFixed(2)+'×';
+  $('volumeVal').textContent=effectOnly?'N/A':Math.round((c.volume??1)*100)+'%';$('fadeInVal').textContent=effectOnly?'N/A':(c.fadeIn||0).toFixed(2)+'s';$('fadeOutVal').textContent=effectOnly?'N/A':(c.fadeOut||0).toFixed(2)+'s';
   if(c.type==='overlay'){
     $('overlayPosition').value=visualConfig.positions.includes(c.position)?c.position:defaultOverlay.position;
     $('overlayOpacity').value=bounded(c.opacity,.1,1,defaultOverlay.opacity);$('overlayOpacityVal').textContent=`${Math.round(bounded(c.opacity,.1,1,defaultOverlay.opacity)*100)}%`;
@@ -1183,10 +1229,10 @@ function endInspectorHistory(controlId){delete $(controlId).dataset.editing}
 bindRange('clipStart',x=>{const c=inspectorPrimaryClip();if(!c)return;c.start=x;refreshTimelineAfterInspectorEdit()});
 bindRange('trimIn',x=>{const c=inspectorPrimaryClip();if(!c)return;c.trimStart=Math.min(x,c.trimEnd-.05);refreshTimelineAfterInspectorEdit()});
 bindRange('trimOut',x=>{const c=inspectorPrimaryClip();if(!c)return;c.trimEnd=Math.max(x,c.trimStart+.05);refreshTimelineAfterInspectorEdit()});
-bindRange('speed',x=>{const clips=selectedTimelineClips();if(!clips.length)return;clips.forEach(c=>c.speed=x);refreshTimelineAfterInspectorEdit()});
-bindRange('volume',x=>{const clips=selectedTimelineClips();if(!clips.length)return;clips.forEach(c=>c.volume=x);updateInspector();if(state.timelinePreview)previewTimelineAt(state.playhead,state.timelinePlaying)});
-bindRange('fadeIn',x=>{const clips=selectedTimelineClips();if(!clips.length)return;clips.forEach(c=>c.fadeIn=Math.min(x,clipTimelineDuration(c)));updateInspector();if(state.timelinePreview)previewTimelineAt(state.playhead,state.timelinePlaying)});
-bindRange('fadeOut',x=>{const clips=selectedTimelineClips();if(!clips.length)return;clips.forEach(c=>c.fadeOut=Math.min(x,clipTimelineDuration(c)));updateInspector();if(state.timelinePreview)previewTimelineAt(state.playhead,state.timelinePlaying)});
+bindRange('speed',x=>{const clips=selectedTimelineClips().filter(c=>c.type!=='effect');if(!clips.length)return;clips.forEach(c=>c.speed=x);refreshTimelineAfterInspectorEdit()});
+bindRange('volume',x=>{const clips=selectedTimelineClips().filter(c=>c.type!=='effect');if(!clips.length)return;clips.forEach(c=>c.volume=x);updateInspector();if(state.timelinePreview)previewTimelineAt(state.playhead,state.timelinePlaying)});
+bindRange('fadeIn',x=>{const clips=selectedTimelineClips().filter(c=>c.type!=='effect');if(!clips.length)return;clips.forEach(c=>c.fadeIn=Math.min(x,clipTimelineDuration(c)));updateInspector();if(state.timelinePreview)previewTimelineAt(state.playhead,state.timelinePlaying)});
+bindRange('fadeOut',x=>{const clips=selectedTimelineClips().filter(c=>c.type!=='effect');if(!clips.length)return;clips.forEach(c=>c.fadeOut=Math.min(x,clipTimelineDuration(c)));updateInspector();if(state.timelinePreview)previewTimelineAt(state.playhead,state.timelinePlaying)});
 
 function updateSelectedVisuals(mutator){
   const clips=selectedVisualClips();
@@ -1298,6 +1344,7 @@ $('exportResolution').onchange=e=>{
   const [w,h]=e.target.value.split('x').map(Number);
   state.export.width=w;state.export.height=h;
 };
+$('exportFit').onchange=e=>state.export.fit=e.target.value==='contain'?'contain':'cover';
 $('exportFps').onchange=e=>state.export.fps=Number(e.target.value)||60;
 
 bindRange('zoom',x=>{
@@ -1351,10 +1398,11 @@ $('watermarkPosition').onchange=e=>setBranding(b=>b.position=e.target.value);
 window.addEventListener('resize',updateWatermarkPreview);
 
 function applyPreviewFx(primary=videoClipAtTime(state.playhead),secondary=null){
-  v.style.filter=cssFilterForClip(primary);
-  transitionVideo.style.filter=cssFilterForClip(secondary||primary);
-  previewImage.style.filter=cssFilterForClip(primary);
-  $('previewVignette').style.opacity=String(bounded(clipVisual(primary).vignette,0,1,0));
+  v.style.filter=cssFilterForClip(primary,state.playhead);
+  transitionVideo.style.filter=cssFilterForClip(secondary||primary,state.playhead);
+  previewImage.style.filter=cssFilterForClip(primary,state.playhead);
+  const animated=animatedEffectStateAt(state.playhead);
+  $('previewVignette').style.opacity=String(bounded(Math.max(clipVisual(primary).vignette,animated.vignette),0,1,0));
 }
 $('previewQuality').onchange=e=>state.settings.previewQuality=e.target.value;
 $('snapSetting').onchange=e=>state.settings.snap=e.target.value==='on';
@@ -1491,7 +1539,8 @@ function audioClipsAtTime(t){
 function overlayClipsAtTime(t){
   return state.overlayClips.filter(c=>timelineClipAtTime([c],t));
 }
-function hasTimeline(){return state.videoClips.length>0||state.audioClips.length>0||state.overlayClips.length>0}
+function effectClipsAtTime(t){return state.effectClips.filter(c=>timelineClipAtTime([c],t))}
+function hasTimeline(){return state.videoClips.length>0||state.audioClips.length>0||state.overlayClips.length>0||state.effectClips.length>0}
 function clipGainAt(c,t){
   const local=Math.max(0,t-c.start),dur=clipTimelineDuration(c);
   let gain=1;
@@ -1501,6 +1550,7 @@ function clipGainAt(c,t){
 }
 
 function previewSourceTime(c,t){
+  if(c.isFreeze)return bounded(c.freezeSourceTime,0,Math.max(0,c.duration||0),0);
   return c.trimStart + Math.max(0,t-c.start)*(c.speed||1);
 }
 
@@ -1522,13 +1572,32 @@ function previewClipTransform(c,t){
   const offset=(1-progress)*100;
   return `translateX(${style==='slide-left'?offset:-offset}%)`;
 }
-function cssFilterForClip(clip){
+function animatedEffectStateAt(t){
+  const result={brightness:0,contrast:1,saturation:1,hue:0,blur:0,vignette:0};
+  for(const clip of effectClipsAtTime(t)){
+    const phase=(Number(clip.trimStart)||0)+Math.max(0,t-clip.start);
+    const wave=frequency=>(Math.sin(phase*Math.PI*2*frequency)+1)/2;
+    switch(clip.effectId){
+      case 'neon-pulse': result.brightness+=.03+.08*wave(2);result.contrast*=1+.22*wave(2);result.saturation*=1+.5*wave(2);result.hue+=12*Math.sin(phase*Math.PI*2);break;
+      case 'flash-strobe': result.brightness+=Math.sin(phase*Math.PI*12)>.72?.38:0;result.contrast*=1.12;break;
+      case 'rgb-wave': result.hue+=55*Math.sin(phase*Math.PI*2*.75);result.saturation*=1.25+.2*wave(1.5);break;
+      case 'focus-beat': result.blur+=3.2*wave(1.3);result.contrast*=1+.16*(1-wave(1.3));break;
+      case 'mono-flicker': result.saturation*=Math.sin(phase*Math.PI*8)>.1?.05:1;result.contrast*=1.14;break;
+      case 'warm-flicker': result.brightness+=.03+.07*wave(3.1);result.hue+=8+12*Math.sin(phase*Math.PI*2*1.1);result.saturation*=1.12;break;
+      case 'nightclub': result.hue+=100*Math.sin(phase*Math.PI*2*1.8);result.saturation*=1.5;result.contrast*=1.15;break;
+      case 'vignette-pulse': result.vignette=Math.max(result.vignette,.25+.55*wave(1.2));result.brightness-=.04*wave(1.2);break;
+    }
+  }
+  return result;
+}
+function cssFilterForClip(clip,time=state.playhead){
   const visual=clipVisual(clip);
-  const brightness=bounded((state.effects.brightness||0)+visual.brightness,-.9,.9,0);
-  const contrast=bounded((state.effects.contrast||1)*visual.contrast,.1,3,1);
-  const saturation=bounded((state.effects.saturation||1)*visual.saturation,0,3,1);
-  const blur=bounded((state.effects.blur||0)+visual.blur,0,20,0);
-  return `brightness(${1+brightness}) contrast(${contrast}) saturate(${saturation}) hue-rotate(${visual.hue}deg) blur(${blur}px)`;
+  const animated=animatedEffectStateAt(time);
+  const brightness=bounded((state.effects.brightness||0)+visual.brightness+animated.brightness,-.9,.9,0);
+  const contrast=bounded((state.effects.contrast||1)*visual.contrast*animated.contrast,.1,3,1);
+  const saturation=bounded((state.effects.saturation||1)*visual.saturation*animated.saturation,0,3,1);
+  const blur=bounded((state.effects.blur||0)+visual.blur+animated.blur,0,20,0);
+  return `brightness(${1+brightness}) contrast(${contrast}) saturate(${saturation}) hue-rotate(${visual.hue+animated.hue}deg) blur(${blur}px)`;
 }
 function updateOverlayPreview(){
   const layer=$('previewOverlayLayer');
@@ -1889,7 +1958,11 @@ function showClipContext(c,x,y){
   contextClipId=c.id;
   const menu=$('clipContext');
   const separate=menu.querySelector('[data-action="separate"]');
+  const mute=menu.querySelector('[data-action="mute"]');
+  const freeze=menu.querySelector('[data-action="freeze"]');
   if(separate)separate.style.display=c.type==='video'?'block':'none';
+  if(mute)mute.style.display=c.type==='effect'?'none':'block';
+  if(freeze)freeze.style.display=c.type==='video'&&!c.isFreeze?'block':'none';
   menu.style.visibility='hidden';
   menu.classList.add('show');
   requestAnimationFrame(()=>{
@@ -1915,6 +1988,27 @@ function trimEndToPlayhead(c){
   pushHistory('Trim clip end');
   c.trimEnd=Math.max(c.trimStart+.05,previewSourceTime(c,state.playhead));
   renderTimeline();updateInspector();previewTimelineAt(state.playhead,false);
+}
+
+function freezeFrameAtPlayhead(c){
+  if(c.type!=='video'||c.isFreeze)return notify('Freeze Frame requires a normal video clip.','warn');
+  const split=splitClipAtTime(c,state.playhead,uid());
+  if(!split)return notify('Move the playhead inside the video clip before creating a freeze frame.','warn');
+  const holdDuration=2;
+  pushHistory('Create freeze frame');
+  const originalTransition={transitionOut:c.transitionOut,transitionDuration:c.transitionDuration};
+  Object.assign(c,split.first,{transitionOut:'none',transitionDuration:.45});
+  state.videoClips.filter(other=>other.id!==c.id&&other.start>=state.playhead-.001).forEach(other=>{other.start+=holdDuration});
+  const second={...split.second,start:state.playhead+holdDuration,...originalTransition};
+  const freeze={
+    ...c,id:uid(),name:`${c.name} • Freeze`,isFreeze:true,freezeSourceTime:split.first.trimEnd,
+    start:state.playhead,trimStart:0,trimEnd:holdDuration,duration:600,speed:1,volume:0,fadeIn:0,fadeOut:0,
+    transitionOut:'none',transitionDuration:.45,transitionIn:0,transitionInStyle:'none'
+  };
+  state.videoClips.push(freeze,second);state.videoClips.sort((a,b)=>a.start-b.start);
+  state.selectedClipIds=new Set([freeze.id]);state.selectedClipId=freeze.id;state.clipSelectionAnchorId=freeze.id;
+  renderTimeline();updateInspector();previewTimelineAt(state.playhead,false);
+  notify('2-second freeze frame inserted. Drag or trim it to change timing.','success');
 }
 
 async function separateAudioFromClip(c){
@@ -1943,6 +2037,12 @@ $('clipContext').addEventListener('click',async e=>{
   if(action==='split')splitSelected();
   if(action==='trim-start')trimStartToPlayhead(c);
   if(action==='trim-end')trimEndToPlayhead(c);
+  if(action==='freeze')freezeFrameAtPlayhead(c);
+  if(action==='move-playhead'){
+    pushHistory('Move clip to playhead');
+    c.start=Math.max(0,state.playhead);clipCollectionForType(c.type).sort((a,b)=>a.start-b.start);
+    renderTimeline();updateInspector();previewTimelineAt(state.playhead,false);
+  }
   if(action==='duplicate')$('duplicateClip').click();
   if(action==='delete')deleteSelected();
   if(action==='separate')await separateAudioFromClip(c);
@@ -1958,7 +2058,7 @@ function splitSelected(){
   if(!result)return notify('Move the playhead inside the selected clip first.');
   pushHistory('Split clip');
   Object.assign(c,result.first);
-  const arr=c.type==='audio'?state.audioClips:state.videoClips;
+  const arr=clipCollectionForType(c.type);
   arr.push(result.second);arr.sort((a,b)=>a.start-b.start);
   state.selectedClipIds=new Set([result.second.id]);state.selectedClipId=result.second.id;state.clipSelectionAnchorId=result.second.id;
   renderTimeline();updateInspector();previewTimelineAt(state.playhead,false);notify('Clip split');
@@ -2211,6 +2311,7 @@ function deleteSelected(){
   state.videoClips=state.videoClips.filter(clip=>!ids.has(clip.id));
   state.audioClips=state.audioClips.filter(clip=>!ids.has(clip.id));
   state.overlayClips=state.overlayClips.filter(clip=>!ids.has(clip.id));
+  state.effectClips=state.effectClips.filter(clip=>!ids.has(clip.id));
   state.selectedClipIds=new Set();state.selectedClipId=null;state.clipSelectionAnchorId=null;
   state.playhead=Math.min(state.playhead,projectEnd());
   renderTimeline();updateInspector();previewTimelineAt(state.playhead,false);
@@ -2219,7 +2320,7 @@ function deleteSelected(){
 $('deleteClip').onclick=deleteSelected;
 $('newProject').onclick=()=>{
   stopTimelinePlayback();
-  state.videoClips=[];state.audioClips=[];state.overlayClips=[];state.selectedClipIds=new Set();state.selectedClipId=null;state.clipSelectionAnchorId=null;state.playhead=0;state.activeTimelineClipId=null;state.history=[];state.future=[];
+  state.videoClips=[];state.audioClips=[];state.overlayClips=[];state.effectClips=[];state.selectedClipIds=new Set();state.selectedClipId=null;state.clipSelectionAnchorId=null;state.playhead=0;state.activeTimelineClipId=null;state.history=[];state.future=[];
   $('timelineModeBadge').style.display='none';
   renderTimeline();updateTransport();notify('Timeline cleared');
 };
@@ -2261,6 +2362,24 @@ setupLaneDrop('videoLane','video');
 setupLaneDrop('audioLane','audio');
 setupLaneDrop('overlayLane','overlay');
 
+function setupEffectLaneDrop(){
+  const lane=$('effectLane');
+  lane.addEventListener('dragover',event=>{
+    if(![...event.dataTransfer.types].includes('application/x-emx-effect-id'))return;
+    event.preventDefault();event.dataTransfer.dropEffect='copy';lane.classList.add('drop-ready');
+  });
+  lane.addEventListener('dragleave',()=>lane.classList.remove('drop-ready'));
+  lane.addEventListener('drop',event=>{
+    event.preventDefault();lane.classList.remove('drop-ready');
+    const effectId=event.dataTransfer.getData('application/x-emx-effect-id');
+    if(!effectDefinition(effectId))return;
+    const rect=lane.getBoundingClientRect();
+    const start=Math.max(0,(event.clientX-rect.left)/Math.max(1,state.pxPerSec));
+    addEffectClip(effectId,start);
+  });
+}
+setupEffectLaneDrop();
+
 function setupTimelineSeek(element){
   element.addEventListener('pointerdown',e=>{
     if(e.button!==0||e.target.closest('.clip'))return;
@@ -2274,6 +2393,45 @@ function setupTimelineSeek(element){
 setupTimelineSeek($('videoLane'));
 setupTimelineSeek($('audioLane'));
 setupTimelineSeek($('overlayLane'));
+setupTimelineSeek($('effectLane'));
+
+function timelineTimeFromClientX(clientX){
+  const canvasRect=$('timelineCanvas').getBoundingClientRect();
+  return bounded((clientX-canvasRect.left-90)/Math.max(1,state.pxPerSec),0,projectEnd(),0);
+}
+let playheadPreviewFrame=0;
+function dragPlayheadTo(clientX,final=false){
+  state.playhead=timelineTimeFromClientX(clientX);
+  state.timelinePreview=true;renderPlayhead();updateTimelineTimeReadout();
+  if(final){
+    if(playheadPreviewFrame){cancelAnimationFrame(playheadPreviewFrame);playheadPreviewFrame=0}
+    previewTimelineAt(state.playhead,false);
+    return;
+  }
+  if(!playheadPreviewFrame)playheadPreviewFrame=requestAnimationFrame(()=>{
+    playheadPreviewFrame=0;previewTimelineAt(state.playhead,false);
+  });
+}
+const timelinePlayhead=$('playhead');
+timelinePlayhead.addEventListener('pointerdown',event=>{
+  if(event.button!==0)return;
+  event.preventDefault();event.stopPropagation();stopTimelinePlayback();
+  timelinePlayhead.classList.add('dragging');timelinePlayhead.setPointerCapture(event.pointerId);
+  dragPlayheadTo(event.clientX);
+});
+timelinePlayhead.addEventListener('pointermove',event=>{
+  if(timelinePlayhead.hasPointerCapture(event.pointerId))dragPlayheadTo(event.clientX);
+});
+function finishPlayheadDrag(event){
+  if(!timelinePlayhead.hasPointerCapture(event.pointerId))return;
+  try{timelinePlayhead.releasePointerCapture(event.pointerId)}catch{}
+  timelinePlayhead.classList.remove('dragging');dragPlayheadTo(event.clientX,true);
+}
+timelinePlayhead.addEventListener('pointerup',finishPlayheadDrag);
+timelinePlayhead.addEventListener('pointercancel',event=>{
+  timelinePlayhead.classList.remove('dragging');
+  if(timelinePlayhead.hasPointerCapture(event.pointerId)){try{timelinePlayhead.releasePointerCapture(event.pointerId)}catch{}}
+});
 
 
 
@@ -2306,7 +2464,8 @@ $('exportBtn').onclick=async()=>{
       project:{
         videoClips:state.videoClips.map(c=>({
           id:c.id,name:c.name,path:c.nativePath,start:c.start,trimStart:c.trimStart,trimEnd:c.trimEnd,speed:c.speed,volume:c.volume,
-          fadeIn:c.fadeIn,fadeOut:c.fadeOut,visual:clipVisual(c),transitionOut:c.transitionOut,transitionDuration:c.transitionDuration,transitionIn:c.transitionIn,transitionInStyle:c.transitionInStyle
+          fadeIn:c.fadeIn,fadeOut:c.fadeOut,visual:clipVisual(c),transitionOut:c.transitionOut,transitionDuration:c.transitionDuration,transitionIn:c.transitionIn,transitionInStyle:c.transitionInStyle,
+          isFreeze:Boolean(c.isFreeze),freezeSourceTime:c.freezeSourceTime
         })),
         audioClips:state.audioClips.map(c=>({
           id:c.id,name:c.name,path:c.nativePath,start:c.start,trimStart:c.trimStart,trimEnd:c.trimEnd,speed:c.speed,volume:c.volume,fadeIn:c.fadeIn,fadeOut:c.fadeOut
@@ -2314,6 +2473,9 @@ $('exportBtn').onclick=async()=>{
         overlayClips:state.overlayClips.map(c=>({
           id:c.id,name:c.name,path:c.nativePath,start:c.start,trimStart:c.trimStart,trimEnd:c.trimEnd,speed:1,
           opacity:c.opacity,scale:c.scale,position:c.position,visual:clipVisual(c)
+        })),
+        effectClips:state.effectClips.map(c=>({
+          id:c.id,effectId:c.effectId,name:effectClipLabel(c),start:c.start,trimStart:c.trimStart,trimEnd:c.trimEnd,speed:1
         })),
         effects:{...state.effects},
         branding:{...state.branding},
@@ -2561,11 +2723,11 @@ function renderUpdateState(update){
 }
 async function hydrateUpdateCenter(){
   if(!window.emxDesktop?.available){
-    renderUpdateState({status:'OFFLINE',currentVersion:'1.10.1',channel:'latest',configured:false,message:'Update Center requires the desktop application.',progress:{}});
+    renderUpdateState({status:'OFFLINE',currentVersion:'1.11.0',channel:'latest',configured:false,message:'Update Center requires the desktop application.',progress:{}});
     return;
   }
   try{renderUpdateState(await window.emxDesktop.updateStatus())}
-  catch(error){renderUpdateState({status:'UPDATE FAILED',currentVersion:'1.10.1',channel:'latest',configured:false,message:String(error?.message||error),progress:{}})}
+  catch(error){renderUpdateState({status:'UPDATE FAILED',currentVersion:'1.11.0',channel:'latest',configured:false,message:String(error?.message||error),progress:{}})}
 }
 if(window.emxDesktop?.available&&window.emxDesktop.onUpdateEvent){window.emxDesktop.onUpdateEvent(renderUpdateState)}
 function notifyManualUpdateCheck(update){

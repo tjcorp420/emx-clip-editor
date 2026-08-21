@@ -34,4 +34,6 @@ for (const token of [
 assert.ok(!main.includes("webSecurity:false"), 'The import workflow must not weaken Electron web security.');
 assert.ok(renderer.includes("normalizeImportInput(item"), 'Renderer imports must normalize trusted desktop descriptors before File-only work.');
 assert.ok(renderer.includes("String(file.type||'').startsWith('audio/')"), 'Waveform extraction must safely reject descriptor-only imports.');
+assert.ok(renderer.includes('accept="video/*,audio/*,image/png,image/jpeg,image/webp,image/gif"'), 'Selective import must explicitly allow supported image overlays.');
+assert.ok(renderer.includes("mediaKind(mime,name='')") && renderer.includes("return 'image'"), 'Renderer import classification must preserve image media.');
 console.log('EMX IMPORT WORKFLOW CONTRACT: PASS');
