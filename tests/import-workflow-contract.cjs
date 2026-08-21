@@ -4,6 +4,7 @@ const path = require('path');
 
 const main = fs.readFileSync(path.join(__dirname, '..', 'electron', 'main.cjs'), 'utf8');
 const preload = fs.readFileSync(path.join(__dirname, '..', 'electron', 'preload.cjs'), 'utf8');
+const renderer = fs.readFileSync(path.join(__dirname, '..', 'src', 'main.js'), 'utf8');
 
 for (const token of [
   "protocol.registerSchemesAsPrivileged([{scheme:'emx-media'",
@@ -28,4 +29,6 @@ for (const token of [
 ]) assert.ok(preload.includes(token), `Missing preload import method: ${token}`);
 
 assert.ok(!main.includes("webSecurity:false"), 'The import workflow must not weaken Electron web security.');
+assert.ok(renderer.includes("normalizeImportInput(item"), 'Renderer imports must normalize trusted desktop descriptors before File-only work.');
+assert.ok(renderer.includes("String(file.type||'').startsWith('audio/')"), 'Waveform extraction must safely reject descriptor-only imports.');
 console.log('EMX IMPORT WORKFLOW CONTRACT: PASS');

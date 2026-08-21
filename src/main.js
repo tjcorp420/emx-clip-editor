@@ -3,6 +3,7 @@ import './style.css';
 import { getStemEngineStatus } from './lib/stems.js';
 import { clipDuration, clipAtTime as timelineClipAtTime, magneticStartForClips, trimLeftByDelta, trimRightByDelta, splitClipAtTime } from './lib/timelineMath.js';
 import { reconcileSelection, selectIds } from './lib/selection.js';
+import { normalizeImportInput } from './lib/importInput.js';
 import visualConfig from '../electron/visuals.json';
 
 const app=document.querySelector('#app');
@@ -23,7 +24,7 @@ const uid=()=>crypto.randomUUID?.()||`${Date.now()}_${Math.random().toString(16)
 app.innerHTML=`
 <div class="app">
 <header class="topbar">
-  <div class="brand"><img class="logo" src="./emx-logo.png" onerror="this.style.display='none'" alt="EMX"><div><h1>EMX CLIP STUDIO</h1><small id="appVersionLabel">Desktop Timeline Editor • V1.9.0</small></div></div>
+  <div class="brand"><img class="logo" src="./emx-logo.png" onerror="this.style.display='none'" alt="EMX"><div><h1>EMX CLIP STUDIO</h1><small id="appVersionLabel">Desktop Timeline Editor • V1.10.0</small></div></div>
   <div class="top-actions">
     <button class="btn undo-last" id="undoLastBtn" disabled>↶ UNDO LAST</button><button class="btn" id="redoBtn" disabled>↷ Redo</button><button class="btn" id="newProject">New</button>
     <button class="btn" id="openFolder">📁 Clips Folder</button>
@@ -93,7 +94,7 @@ app.innerHTML=`
   <div class="inspector-body" id="inspectorBody">
     <div class="tabs">
       <button class="tab active" data-inspector="clip">Clip</button>
-      <button class="tab" data-inspector="effects">Effects</button>
+      <button class="tab" data-inspector="effects">Effects</button><button class="tab" data-inspector="filters">Filters</button><button class="tab" data-inspector="transitions">Transitions</button>
       <button class="tab" data-inspector="branding">Watermark</button><button class="tab" data-inspector="audio">Audio AI</button>
       <button class="tab" data-inspector="export">Export</button>
       <button class="tab" data-inspector="updates">Updates</button>
@@ -118,14 +119,19 @@ app.innerHTML=`
         <div class="field"><label>Scale <span id="overlayScaleVal">28%</span></label><input id="overlayScale" type="range" min=".08" max="1" step=".01" value=".28"></div>
       </div>
       <div class="group" id="transitionGroup" hidden><h3>TRANSITION OUT</h3>
-        <div class="field"><label>Style</label><select id="transitionOut"><option value="none">None</option><option value="crossfade">Cross Fade</option></select></div>
+        <div class="field"><label>Style</label><select id="transitionOut"><option value="none">None</option><option value="crossfade">Dissolve</option><option value="dip-black">Dip to Black</option><option value="slide-left">Slide Left</option><option value="slide-right">Slide Right</option></select></div>
         <div class="field"><label>Duration <span id="transitionDurationVal">0.45s</span></label><input id="transitionDuration" type="range" min=".1" max="2" step=".05" value=".45"></div>
         <div class="status" id="transitionHint">Cross Fade overlaps the next video clip and renders the blend in the preview and MP4 export.</div>
       </div>
     </div>
 
     <div id="insEffects" style="display:none">
-      <div class="group"><h3>SELECTED CLIP VISUALS</h3>
+      <div class="group visual-library-group"><h3>VIDEO EFFECTS</h3>
+        <div id="effectLibraryHint" class="status warn">Select a video or image overlay on the timeline, then choose an effect. Effects are rendered in preview and native MP4 export.</div>
+        <input id="effectSearch" class="visual-search" type="search" placeholder="Search effects" aria-label="Search effects">
+        <div id="effectLibrary" class="visual-library" aria-live="polite"></div>
+      </div>
+      <div class="group"><h3>FINE-TUNE SELECTED CLIP</h3>
         <div id="clipVisualHint" class="status warn">Select a video or image overlay on the timeline to apply a visual preset or precise adjustments.</div>
         <div class="field"><label>Preset</label><select id="clipVisualPreset"><option value="custom" disabled>Custom adjustments</option><option value="none">None / Reset</option><option value="vivid">Vivid</option><option value="cinematic">Cinematic</option><option value="mono">Monochrome</option><option value="retro">Retro</option><option value="soft">Soft Glow</option></select></div>
         <div class="field"><label>Clip Brightness <span id="clipBrightnessVal">0.00</span></label><input id="clipBrightness" type="range" min="-.5" max=".5" step=".01" value="0"></div>
@@ -140,6 +146,22 @@ app.innerHTML=`
         <div class="field"><label>Contrast <span id="contrastVal">1.00</span></label><input id="contrast" type="range" min=".5" max="2" step=".01" value="1"></div>
         <div class="field"><label>Saturation <span id="saturationVal">1.00</span></label><input id="saturation" type="range" min="0" max="2" step=".01" value="1"></div>
         <div class="field"><label>Blur <span id="blurVal">0</span></label><input id="blur" type="range" min="0" max="10" step=".1" value="0"></div>
+      </div>
+    </div>
+
+    <div id="insFilters" style="display:none">
+      <div class="group visual-library-group"><h3>FILTERS</h3>
+        <div id="filterLibraryHint" class="status warn">Select a video or image overlay on the timeline, then choose a filter. Filters are baked into exported MP4s.</div>
+        <input id="filterSearch" class="visual-search" type="search" placeholder="Search filters" aria-label="Search filters">
+        <div id="filterLibrary" class="visual-library" aria-live="polite"></div>
+      </div>
+    </div>
+
+    <div id="insTransitions" style="display:none">
+      <div class="group visual-library-group"><h3>TRANSITIONS</h3>
+        <div id="transitionLibraryHint" class="status warn">Select one video clip that has another video after it, then choose a transition.</div>
+        <input id="transitionSearch" class="visual-search" type="search" placeholder="Search transitions" aria-label="Search transitions">
+        <div id="transitionLibrary" class="transition-library" aria-live="polite"></div>
       </div>
     </div>
 
@@ -394,7 +416,7 @@ async function makeThumbnail(source,mime,duration){
 
 
 async function makeWaveform(file){
-  if(!file.type.startsWith('audio/'))return null;
+  if(!file||!String(file.type||'').startsWith('audio/')||typeof file.arrayBuffer!=='function')return null;
   try{
     const Ctx=window.AudioContext||window.webkitAudioContext;
     if(!Ctx)return null;
@@ -455,21 +477,20 @@ async function addMediaItems(items){
   let count=0,added=[];
   setTopTask('IMPORTING MEDIA…',null,'working');
   for(const item of items){
-    const file=item?.file instanceof File?item.file:item;
-    const mime=String(item?.mime||file?.type||'');
-    const name=String(item?.name||file?.name||'Imported media');
+    const imported=normalizeImportInput(item,candidate=>typeof File!=='undefined'&&candidate instanceof File);
+    const {file,mime,name,nativePath,mediaToken,url:trustedUrl}=imported;
     const type=mediaKind(mime,name);
-    if(!file&&!item?.url)continue;
+    if(!file&&!trustedUrl)continue;
     if(!['video','audio','image'].includes(type))continue;
-    const url=item?.url||URL.createObjectURL(file);
+    const url=trustedUrl||URL.createObjectURL(file);
     const duration=await probeMedia(url,mime),thumb=await makeThumbnail(url,mime,duration),waveform=file?await makeWaveform(file):null;
-    let nativePath=item?.nativePath||'';
+    let resolvedNativePath=nativePath;
     if(!nativePath&&window.emxDesktop?.available){
-      try{nativePath=window.emxDesktop.getPathForFile(file)||''}catch{}
+      try{resolvedNativePath=window.emxDesktop.getPathForFile(file)||''}catch{}
     }
     state.media.push({
-      id:uid(),file:file instanceof File?file:null,nativePath,name,
-      type,duration,url,mediaToken:item?.mediaToken||'',revokeUrl:!item?.url,thumb,waveform,addedAt:Date.now()
+      id:uid(),file,nativePath:resolvedNativePath,name,
+      type,duration,url,mediaToken,revokeUrl:!trustedUrl,thumb,waveform,addedAt:Date.now()
     });
     added.push(state.media.at(-1));
     count++;
@@ -701,7 +722,7 @@ function makeTimelineClip(media,track,start){
     id:uid(),mediaId:media.id,file:media.file,nativePath:media.nativePath||'',name:media.name,type:track,sourceType:media.type,
     start,trimStart:0,trimEnd:duration,speed:1,volume:state.settings.defaultVolume,fadeIn:0,fadeOut:0,duration,thumb:media.thumb,waveform:media.waveform,
     visual:{...defaultClipVisual},opacity:isOverlay?defaultOverlay.opacity:1,scale:isOverlay?defaultOverlay.scale:1,
-    position:isOverlay?defaultOverlay.position:'center',transitionOut:'none',transitionDuration:.45,transitionIn:0
+    position:isOverlay?defaultOverlay.position:'center',transitionOut:'none',transitionDuration:.45,transitionIn:0,transitionInStyle:'none'
   };
 }
 function addMediaItemsToTimeline(mediaItems,forcedTrack=null,explicitStart=null){
@@ -809,7 +830,7 @@ function renderLane(lane,clips,trackType='video'){
     const d=document.createElement('div');d.className=`clip ${audio?'audio':''} ${overlay?'overlay':''} ${state.selectedClipIds.has(c.id)?'selected':''}`;d.dataset.clip=c.id;
     d.style.left=`${c.start*state.pxPerSec}px`;d.style.width=`${Math.max(48,clipTimelineDuration(c)*state.pxPerSec)}px`;
     const bg=audio&&c.waveform?waveformSvg(c.waveform):c.thumb;
-    const transition=c.transitionOut==='crossfade'?` • ↔ ${Number(c.transitionDuration||.45).toFixed(2)}s`:'';
+    const transition=c.transitionOut&&c.transitionOut!=='none'?` • ◇ ${transitionLabel(c.transitionOut)} ${Number(c.transitionDuration||.45).toFixed(2)}s`:'';
     d.innerHTML=`<div class="clip-bg" ${bg?`style="background-image:url('${bg}')"`:''}></div><div class="clip-shade"></div><div class="trim-handle left" title="Drag left/right to trim start"><span>‹</span></div><div class="trim-handle right" title="Drag left/right to trim end"><span>›</span></div><div class="clip-title">${overlay?'🖼️ ':''}${c.name}</div><div class="clip-sub">${fmt(c.trimStart)} → ${fmt(c.trimEnd)}${overlay?` • ${Math.round((c.opacity??1)*100)}%`: ` • ${c.speed.toFixed(2)}×${transition}`}</div>`;
     lane.appendChild(d);
     let sx=0,orig=0,dragMoved=false;
@@ -852,7 +873,7 @@ function renderLane(lane,clips,trackType='video'){
       d.style.left=`${c.start*state.pxPerSec}px`;
       d.style.width=`${Math.max(48,clipTimelineDuration(c)*state.pxPerSec)}px`;
       const sub=d.querySelector('.clip-sub');
-      if(sub)sub.textContent=`${fmt(c.trimStart)} → ${fmt(c.trimEnd)}${overlay?` • ${Math.round((c.opacity??1)*100)}%`:` • ${c.speed.toFixed(2)}×${c.transitionOut==='crossfade'?` • ↔ ${Number(c.transitionDuration||.45).toFixed(2)}s`:''}`}`;
+      if(sub)sub.textContent=`${fmt(c.trimStart)} → ${fmt(c.trimEnd)}${overlay?` • ${Math.round((c.opacity??1)*100)}%`:` • ${c.speed.toFixed(2)}×${c.transitionOut&&c.transitionOut!=='none'?` • ◇ ${transitionLabel(c.transitionOut)} ${Number(c.transitionDuration||.45).toFixed(2)}s`:''}`}`;
     }
 
     leftHandle.addEventListener('pointerdown',e=>{
@@ -925,6 +946,94 @@ function renderTimeline(allowFit=true){
 }
 
 function selectedVisualClips(){return selectedTimelineClips().filter(clip=>clip.type==='video'||clip.type==='overlay')}
+function visualPresetLabel(id){
+  if(id==='none')return 'None / Reset';
+  const entry=[...(visualConfig.effectLibrary||[]),...(visualConfig.filterLibrary||[])].find(item=>item.id===id);
+  return entry?.title||String(id).replace(/-/g,' ').replace(/\b\w/g,letter=>letter.toUpperCase());
+}
+function hydrateVisualPresetSelect(){
+  const select=$('clipVisualPreset');
+  select.replaceChildren();
+  const custom=document.createElement('option');custom.value='custom';custom.disabled=true;custom.textContent='Custom adjustments';select.appendChild(custom);
+  Object.keys(visualConfig.presets).forEach(id=>{
+    const option=document.createElement('option');option.value=id;option.textContent=visualPresetLabel(id);select.appendChild(option);
+  });
+}
+hydrateVisualPresetSelect();
+function groupLibraryItems(items,query){
+  const normalized=String(query||'').trim().toLocaleLowerCase();
+  return (items||[]).filter(item=>!normalized||`${item.title} ${item.category} ${item.detail}`.toLocaleLowerCase().includes(normalized));
+}
+function renderVisualCardLibrary(containerId,items,query,kind){
+  const container=$(containerId);if(!container)return;
+  const visible=groupLibraryItems(items,query);
+  container.replaceChildren();
+  if(!visible.length){
+    const empty=document.createElement('div');empty.className='status';empty.textContent=`No ${kind} match that search.`;container.appendChild(empty);return;
+  }
+  const grouped=new Map();
+  visible.forEach(item=>{const group=grouped.get(item.category)||[];group.push(item);grouped.set(item.category,group)});
+  const selected=selectedVisualClips();
+  const primary=selected.find(clip=>clip.id===state.selectedClipId)||selected.at(-1)||null;
+  const activeId=primary?matchingVisualPreset(clipVisual(primary)):'';
+  for(const [category,entries] of grouped){
+    const section=document.createElement('section');section.className='visual-library-section';
+    const heading=document.createElement('div');heading.className='visual-library-heading';heading.textContent=category;section.appendChild(heading);
+    const grid=document.createElement('div');grid.className='visual-card-grid';
+    entries.forEach(item=>{
+      const button=document.createElement('button');button.type='button';button.className=`visual-card ${activeId===item.id?'selected':''}`;button.disabled=!selected.length;
+      button.title=`Apply ${item.title}: ${item.detail}`;
+      const swatch=document.createElement('span');swatch.className='visual-card-swatch';swatch.dataset.swatch=item.swatch||'violet';
+      const title=document.createElement('span');title.className='visual-card-title';title.textContent=item.title;
+      const detail=document.createElement('span');detail.className='visual-card-detail';detail.textContent=item.detail;
+      button.append(swatch,title,detail);
+      button.addEventListener('click',()=>applyVisualPreset(item.id,item.title));
+      grid.appendChild(button);
+    });
+    section.appendChild(grid);container.appendChild(section);
+  }
+}
+function transitionLabel(id){
+  if(id==='none')return 'None';
+  return (visualConfig.transitionLibrary||[]).find(item=>item.id===id)?.title||visualPresetLabel(id);
+}
+function renderTransitionLibrary(){
+  const container=$('transitionLibrary');if(!container)return;
+  const visible=groupLibraryItems(visualConfig.transitionLibrary,$('transitionSearch')?.value||'');
+  const clip=inspectorPrimaryClip();
+  const hasSingleVideo=selectedTimelineClips().length===1&&clip?.type==='video';
+  const canApply=hasSingleVideo&&!!nextVideoClip(clip);
+  const hint=$('transitionLibraryHint');
+  if(!hasSingleVideo){hint.className='status warn';hint.textContent='Select one video clip that has another video after it, then choose a transition.'}
+  else if(!canApply){hint.className='status warn';hint.textContent='Add another video after this clip before applying a transition.'}
+  else {hint.className='status good';hint.textContent=`Choose how ${clip.name} enters the next video. Every option previews and exports with the selected duration.`}
+  container.replaceChildren();
+  if(!visible.length){const empty=document.createElement('div');empty.className='status';empty.textContent='No transition matches that search.';container.appendChild(empty);return}
+  visible.forEach(item=>{
+    const button=document.createElement('button');button.type='button';button.className=`transition-card ${clip?.transitionOut===item.id?'selected':''}`;button.disabled=!canApply;
+    button.title=`Apply ${item.title}: ${item.detail}`;
+    const swatch=document.createElement('span');swatch.className='transition-card-swatch';swatch.dataset.transitionSwatch=item.swatch||'dissolve';
+    const title=document.createElement('span');title.className='visual-card-title';title.textContent=item.title;
+    const detail=document.createElement('span');detail.className='visual-card-detail';detail.textContent=item.detail;
+    button.append(swatch,title,detail);
+    button.addEventListener('click',()=>{
+      const target=inspectorPrimaryClip();if(!target||target.type!=='video')return;
+      pushHistory(`Apply ${item.title} transition`);
+      configureTransition(target,item.id);
+      refreshTimelineAfterInspectorEdit();
+    });
+    container.appendChild(button);
+  });
+}
+function updateVisualLibraryState(){
+  const clips=selectedVisualClips();
+  const effectHint=$('effectLibraryHint'),filterHint=$('filterLibraryHint');
+  const message=clips.length>1?`${clips.length} visual clips selected. Applying a look updates all of them.`:'Select a video or image overlay on the timeline, then choose a look. Effects are rendered in preview and native MP4 export.';
+  [effectHint,filterHint].forEach(hint=>{if(!hint)return;hint.className=clips.length?'status good':'status warn';hint.textContent=clips.length?message:hint.id==='filterLibraryHint'?'Select a video or image overlay on the timeline, then choose a filter. Filters are baked into exported MP4s.':message});
+  renderVisualCardLibrary('effectLibrary',visualConfig.effectLibrary,$('effectSearch')?.value||'','effect');
+  renderVisualCardLibrary('filterLibrary',visualConfig.filterLibrary,$('filterSearch')?.value||'','filter');
+  renderTransitionLibrary();
+}
 function matchingVisualPreset(visual){
   const fields=['brightness','contrast','saturation','blur','hue','vignette'];
   return Object.entries(visualConfig.presets).find(([,preset])=>fields.every(field=>Math.abs((visual[field]??0)-(preset[field]??0))<.005))?.[0]||'custom';
@@ -938,6 +1047,7 @@ function updateClipVisualControls(){
   if(!primary){
     hint.className='status warn';
     hint.textContent='Select a video or image overlay on the timeline to apply a visual preset or precise adjustments.';
+    updateVisualLibraryState();
     return;
   }
   hint.className='status good';
@@ -950,6 +1060,7 @@ function updateClipVisualControls(){
   $('clipHue').value=visual.hue;$('clipHueVal').textContent=`${visual.hue.toFixed(0)}°`;
   $('clipBlur').value=visual.blur;$('clipBlurVal').textContent=visual.blur.toFixed(1);
   $('clipVignette').value=visual.vignette;$('clipVignetteVal').textContent=`${Math.round(visual.vignette*100)}%`;
+  updateVisualLibraryState();
 }
 
 function updateInspector(){
@@ -1007,6 +1118,7 @@ function updateInspector(){
   if(c.type==='video'){
     $('transitionOut').value=visualConfig.transitionTypes.includes(c.transitionOut)?c.transitionOut:'none';
     $('transitionDuration').value=bounded(c.transitionDuration,.1,2,.45);$('transitionDurationVal').textContent=`${bounded(c.transitionDuration,.1,2,.45).toFixed(2)}s`;
+    $('transitionHint').textContent=c.transitionOut==='dip-black'?'Dip to Black fades this clip out and brings the next one up from black in preview and MP4 export.':c.transitionOut==='slide-left'||c.transitionOut==='slide-right'?`${transitionLabel(c.transitionOut)} moves the next clip over this one in preview and MP4 export.`:'Dissolve overlaps the next video clip and renders the blend in the preview and MP4 export.';
   }
 }
 function bindRange(id,fn){$(id).addEventListener('input',e=>fn(+e.target.value))}
@@ -1050,6 +1162,14 @@ function updateSelectedVisuals(mutator){
   renderTimeline();
   if(state.timelinePreview)previewTimelineAt(state.playhead,state.timelinePlaying);
 }
+function applyVisualPreset(id,title=visualPresetLabel(id)){
+  const preset=visualConfig.presets[id];
+  if(!preset)return;
+  if(!selectedVisualClips().length)return notify('Select a video or image overlay on the timeline first.','warn');
+  pushHistory(`Apply ${title}`);
+  updateSelectedVisuals(visual=>Object.assign(visual,preset));
+  updateVisualLibraryState();
+}
 function updateVisualRange(id,valueKey,formatter=x=>String(x)){
   bindRange(id,value=>{
     updateSelectedVisuals(visual=>{visual[valueKey]=value});
@@ -1059,9 +1179,9 @@ function updateVisualRange(id,valueKey,formatter=x=>String(x)){
 $('clipVisualPreset').onchange=e=>{
   const preset=visualConfig.presets[e.target.value];
   if(!preset)return;
-  pushHistory(`Apply ${e.target.selectedOptions[0]?.textContent||'visual'} preset`);
-  updateSelectedVisuals(visual=>Object.assign(visual,preset));
+  applyVisualPreset(e.target.value,e.target.selectedOptions[0]?.textContent||'visual preset');
 };
+['effectSearch','filterSearch','transitionSearch'].forEach(id=>$(id).addEventListener('input',updateVisualLibraryState));
 updateVisualRange('clipBrightness','brightness',value=>value.toFixed(2));
 updateVisualRange('clipContrast','contrast',value=>value.toFixed(2));
 updateVisualRange('clipSaturation','saturation',value=>value.toFixed(2));
@@ -1086,16 +1206,25 @@ function nextVideoClip(clip){
   const ordered=sortedVideoClips();
   return ordered.slice(ordered.findIndex(item=>item.id===clip.id)+1).find(item=>item.id!==clip.id)||null;
 }
-function configureCrossFade(clip,requestedType=clip.transitionOut){
+function transitionOverlapsNext(type){return type==='crossfade'||type==='slide-left'||type==='slide-right'}
+function transitionUsesAlpha(type){return type==='crossfade'||type==='dip-black'}
+function clearTransitionLink(clip,next){
+  const previous=clip.transitionOut;
+  if(next&&(next.transitionInStyle===previous||(!next.transitionInStyle&&previous==='crossfade'))){
+    next.transitionIn=0;
+    next.transitionInStyle='none';
+  }
+  clip.transitionOut='none';
+}
+function configureTransition(clip,requestedType=clip.transitionOut){
   const next=nextVideoClip(clip);
-  if(requestedType!=='crossfade'){
-    if(next&&next.transitionIn===clip.transitionDuration)next.transitionIn=0;
-    clip.transitionOut='none';
+  if(!visualConfig.transitionTypes.includes(requestedType)||requestedType==='none'){
+    clearTransitionLink(clip,next);
     return true;
   }
   if(!next){
     clip.transitionOut='none';
-    notify('Cross Fade needs another video clip after the selected clip.','warn');
+    notify(`${transitionLabel(requestedType)} needs another video clip after the selected clip.`,'warn');
     return false;
   }
   const duration=Math.min(
@@ -1103,23 +1232,25 @@ function configureCrossFade(clip,requestedType=clip.transitionOut){
     Math.max(.1,clipTimelineDuration(clip)-.05),
     Math.max(.1,clipTimelineDuration(next)-.05)
   );
-  clip.transitionOut='crossfade';
+  clip.transitionOut=requestedType;
   clip.transitionDuration=duration;
   next.transitionIn=duration;
-  next.start=Math.max(0,clip.start+clipTimelineDuration(clip)-duration);
+  next.transitionInStyle=requestedType;
+  next.start=Math.max(0,clip.start+clipTimelineDuration(clip)-(transitionOverlapsNext(requestedType)?duration:0));
   state.videoClips.sort((left,right)=>left.start-right.start);
   return true;
 }
+function configureCrossFade(clip,requestedType='crossfade'){return configureTransition(clip,requestedType)}
 $('transitionOut').onchange=e=>{
   const clip=inspectorPrimaryClip();if(!clip||clip.type!=='video')return;
-  pushHistory(e.target.value==='crossfade'?'Create cross fade':'Remove transition');
-  configureCrossFade(clip,e.target.value);
+  pushHistory(e.target.value==='none'?'Remove transition':`Apply ${transitionLabel(e.target.value)} transition`);
+  configureTransition(clip,e.target.value);
   refreshTimelineAfterInspectorEdit();
 };
 bindRange('transitionDuration',value=>{
   const clip=inspectorPrimaryClip();if(!clip||clip.type!=='video')return;
   clip.transitionDuration=value;
-  if(clip.transitionOut==='crossfade')configureCrossFade(clip,'crossfade');
+  if(clip.transitionOut&&clip.transitionOut!=='none')configureTransition(clip,clip.transitionOut);
   $('transitionDurationVal').textContent=`${clip.transitionDuration.toFixed(2)}s`;
   refreshTimelineAfterInspectorEdit();
 });
@@ -1343,10 +1474,19 @@ function previewClipOpacity(c,t){
   const local=Math.max(0,t-c.start),duration=clipTimelineDuration(c);
   let opacity=1;
   const transitionIn=bounded(c.transitionIn,0,2,0);
-  const transitionOut=c.transitionOut==='crossfade'?bounded(c.transitionDuration,.1,2,.45):0;
-  if(transitionIn>0&&local<transitionIn)opacity*=local/transitionIn;
+  const transitionInStyle=c.transitionInStyle||'crossfade';
+  const transitionOut=transitionUsesAlpha(c.transitionOut)?bounded(c.transitionDuration,.1,2,.45):0;
+  if(transitionIn>0&&transitionUsesAlpha(transitionInStyle)&&local<transitionIn)opacity*=local/transitionIn;
   if(transitionOut>0&&local>duration-transitionOut)opacity*=Math.max(0,(duration-local)/transitionOut);
   return bounded(opacity,0,1,1);
+}
+function previewClipTransform(c,t){
+  const style=c.transitionInStyle||'none';
+  const duration=bounded(c.transitionIn,0,2,0);
+  if(!duration||!(style==='slide-left'||style==='slide-right'))return 'translateX(0)';
+  const progress=bounded((t-c.start)/duration,0,1,1);
+  const offset=(1-progress)*100;
+  return `translateX(${style==='slide-left'?offset:-offset}%)`;
 }
 function cssFilterForClip(clip){
   const visual=clipVisual(clip);
@@ -1480,6 +1620,7 @@ async function previewTimelineAt(t,autoplay=false){
   v.volume=Math.max(0,Math.min(1,c.volume??1))*clipGainAt(c,state.playhead)*Math.max(0,Math.min(1,+$('masterVolume').value||1));
   v.muted=state.previewMuted;
   v.style.opacity=String(previewClipOpacity(c,state.playhead));
+  v.style.transform='translateX(0)';
 
   if(secondary){
     const secondaryMedia=state.media.find(media=>media.id===secondary.mediaId);
@@ -1497,11 +1638,11 @@ async function previewTimelineAt(t,autoplay=false){
       const secondaryTime=Math.min(Math.max(secondary.trimStart,previewSourceTime(secondary,state.playhead)),Math.max(secondary.trimStart,secondary.trimEnd-.01));
       if(Math.abs((transitionVideo.currentTime||0)-secondaryTime)>.12){try{transitionVideo.currentTime=secondaryTime}catch{}}
       transitionVideo.playbackRate=Math.max(.25,Math.min(4,secondary.speed||1));
-      transitionVideo.muted=true;transitionVideo.style.opacity=String(previewClipOpacity(secondary,state.playhead));transitionVideo.style.display='block';
+      transitionVideo.muted=true;transitionVideo.style.opacity=String(previewClipOpacity(secondary,state.playhead));transitionVideo.style.transform=previewClipTransform(secondary,state.playhead);transitionVideo.style.display='block';
       if(autoplay){try{await transitionVideo.play()}catch{}}else transitionVideo.pause();
     }
   }else{
-    transitionVideo.pause();transitionVideo.style.display='none';transitionVideo.removeAttribute('src');delete transitionVideo.dataset.clipId;delete transitionVideo.dataset.mediaId;
+    transitionVideo.pause();transitionVideo.style.display='none';transitionVideo.style.transform='translateX(0)';transitionVideo.removeAttribute('src');delete transitionVideo.dataset.clipId;delete transitionVideo.dataset.mediaId;
   }
   applyPreviewFx(c,secondary);
   await syncExternalTimelineAudio(state.playhead,autoplay);
@@ -2131,7 +2272,7 @@ $('exportBtn').onclick=async()=>{
       project:{
         videoClips:state.videoClips.map(c=>({
           id:c.id,name:c.name,path:c.nativePath,start:c.start,trimStart:c.trimStart,trimEnd:c.trimEnd,speed:c.speed,volume:c.volume,
-          fadeIn:c.fadeIn,fadeOut:c.fadeOut,visual:clipVisual(c),transitionOut:c.transitionOut,transitionDuration:c.transitionDuration,transitionIn:c.transitionIn
+          fadeIn:c.fadeIn,fadeOut:c.fadeOut,visual:clipVisual(c),transitionOut:c.transitionOut,transitionDuration:c.transitionDuration,transitionIn:c.transitionIn,transitionInStyle:c.transitionInStyle
         })),
         audioClips:state.audioClips.map(c=>({
           id:c.id,name:c.name,path:c.nativePath,start:c.start,trimStart:c.trimStart,trimEnd:c.trimEnd,speed:c.speed,volume:c.volume,fadeIn:c.fadeIn,fadeOut:c.fadeOut
@@ -2386,11 +2527,11 @@ function renderUpdateState(update){
 }
 async function hydrateUpdateCenter(){
   if(!window.emxDesktop?.available){
-    renderUpdateState({status:'OFFLINE',currentVersion:'1.9.0',channel:'latest',configured:false,message:'Update Center requires the desktop application.',progress:{}});
+    renderUpdateState({status:'OFFLINE',currentVersion:'1.10.0',channel:'latest',configured:false,message:'Update Center requires the desktop application.',progress:{}});
     return;
   }
   try{renderUpdateState(await window.emxDesktop.updateStatus())}
-  catch(error){renderUpdateState({status:'UPDATE FAILED',currentVersion:'1.9.0',channel:'latest',configured:false,message:String(error?.message||error),progress:{}})}
+  catch(error){renderUpdateState({status:'UPDATE FAILED',currentVersion:'1.10.0',channel:'latest',configured:false,message:String(error?.message||error),progress:{}})}
 }
 if(window.emxDesktop?.available&&window.emxDesktop.onUpdateEvent){window.emxDesktop.onUpdateEvent(renderUpdateState)}
 function notifyManualUpdateCheck(update){
@@ -2425,7 +2566,8 @@ autoEnsureAiReady({showUi:false});
 
 function openInspector(name){
   document.querySelectorAll('.tab').forEach(x=>x.classList.toggle('active',x.dataset.inspector===name));
-  ['clip','effects','branding','audio','export','updates','settings'].forEach(n=>$('ins'+n[0].toUpperCase()+n.slice(1)).style.display=n===name?'block':'none');
+  ['clip','effects','filters','transitions','branding','audio','export','updates','settings'].forEach(n=>$('ins'+n[0].toUpperCase()+n.slice(1)).style.display=n===name?'block':'none');
+  if(name==='effects'||name==='filters'||name==='transitions')updateVisualLibraryState();
 }
 document.querySelectorAll('.tab').forEach(t=>t.addEventListener('click',()=>openInspector(t.dataset.inspector)));
 

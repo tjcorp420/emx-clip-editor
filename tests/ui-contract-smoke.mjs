@@ -84,9 +84,12 @@ for (const token of [
   'id="previewTransitionVideo"',
   'id="clipVisualPreset"',
   'id="transitionOut"',
-  'Cross Fade',
+  'id="effectLibrary"',
+  'id="filterLibrary"',
+  'id="transitionLibrary"',
+  'Dissolve',
   'updateOverlayPreview',
-  'configureCrossFade',
+  'configureTransition',
   'overlayClips:[]'
 ]) {
   assert.ok(s.includes(token), `V1.9 visual editing contract missing ${token}.`);

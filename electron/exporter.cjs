@@ -115,13 +115,31 @@ function combinedVisual(projectEffects, clipVisual) {
     vignette: local.vignette
   };
 }
+function incomingTransitionType(c={}) {
+  if (typeof c.transitionInStyle === 'string' && c.transitionInStyle) return c.transitionInStyle;
+  return n(c.transitionIn,0) > 0 ? 'crossfade' : 'none';
+}
+function alphaTransition(type) {
+  return type === 'crossfade' || type === 'dip-black';
+}
 function videoTransitionFilters(c, outDur) {
   const filters=[];
-  const fadeIn=clamp(n(c.transitionIn,0),0,Math.max(0,outDur-.01));
-  const fadeOut=c.transitionOut==='crossfade'?clamp(n(c.transitionDuration,.45),0,Math.max(0,outDur-.01)):0;
+  const fadeIn=alphaTransition(incomingTransitionType(c))?clamp(n(c.transitionIn,0),0,Math.max(0,outDur-.01)):0;
+  const fadeOut=alphaTransition(c.transitionOut)?clamp(n(c.transitionDuration,.45),0,Math.max(0,outDur-.01)):0;
   if(fadeIn>0)filters.push(`fade=t=in:st=0:d=${fadeIn.toFixed(6)}:alpha=1`);
   if(fadeOut>0)filters.push(`fade=t=out:st=${Math.max(0,outDur-fadeOut).toFixed(6)}:d=${fadeOut.toFixed(6)}:alpha=1`);
   return filters;
+}
+function videoOverlayX(c={}) {
+  const style=incomingTransitionType(c);
+  const duration=clamp(n(c.transitionIn,0),0,2);
+  if(!duration||(style!=='slide-left'&&style!=='slide-right'))return '0';
+  const start=Math.max(0,n(c.start,0));
+  const end=start+duration;
+  const offset=`W*(1-(t-${start.toFixed(6)})/${duration.toFixed(6)})`;
+  return style==='slide-left'
+    ? `if(lt(t\\,${end.toFixed(6)})\\,${offset}\\,0)`
+    : `if(lt(t\\,${end.toFixed(6)})\\,-${offset}\\,0)`;
 }
 function normalizedOverlay(c={}) {
   const defaults=visualConfig.defaultOverlay;
@@ -184,9 +202,9 @@ function buildExportArgs(project, probeByPath, outputPath) {
   });
 
   let current='base';
-  videos.forEach((_,i)=>{
+  videos.forEach((clip,i)=>{
     const next=`comp${i}`;
-    filters.push(`[${current}][vid${i}]overlay=x=0:y=0:eof_action=pass:repeatlast=0:shortest=0[${next}]`);
+    filters.push(`[${current}][vid${i}]overlay=x=${videoOverlayX(clip)}:y=0:eof_action=pass:repeatlast=0:shortest=0[${next}]`);
     current=next;
   });
   filters.push(`[${current}]trim=duration=${dur.toFixed(6)},setpts=PTS-STARTPTS[vbase]`);

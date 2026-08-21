@@ -13,8 +13,45 @@
     "cinematic": { "brightness": -0.04, "contrast": 1.18, "saturation": 0.82, "blur": 0, "hue": -4, "vignette": 0.3 },
     "mono": { "brightness": 0, "contrast": 1.08, "saturation": 0, "blur": 0, "hue": 0, "vignette": 0.12 },
     "retro": { "brightness": 0.05, "contrast": 0.88, "saturation": 1.2, "blur": 0, "hue": -9, "vignette": 0.18 },
-    "soft": { "brightness": 0.04, "contrast": 0.94, "saturation": 1.08, "blur": 0.7, "hue": 0, "vignette": 0 }
+    "soft": { "brightness": 0.04, "contrast": 0.94, "saturation": 1.08, "blur": 0.7, "hue": 0, "vignette": 0 },
+    "neon-pop": { "brightness": 0.03, "contrast": 1.28, "saturation": 1.55, "blur": 0, "hue": 10, "vignette": 0.08 },
+    "dream-blur": { "brightness": 0.08, "contrast": 0.86, "saturation": 1.15, "blur": 1.2, "hue": 4, "vignette": 0 },
+    "night-game": { "brightness": -0.12, "contrast": 1.22, "saturation": 1.12, "blur": 0, "hue": -12, "vignette": 0.3 },
+    "cream": { "brightness": 0.09, "contrast": 0.9, "saturation": 0.84, "blur": 0, "hue": 8, "vignette": 0.04 },
+    "cold-thrill": { "brightness": -0.02, "contrast": 1.16, "saturation": 0.76, "blur": 0, "hue": -22, "vignette": 0.2 },
+    "bronze-film": { "brightness": 0.02, "contrast": 1.08, "saturation": 0.9, "blur": 0, "hue": 24, "vignette": 0.24 },
+    "nature": { "brightness": 0.05, "contrast": 1.05, "saturation": 1.26, "blur": 0, "hue": -6, "vignette": 0 },
+    "soft-blush": { "brightness": 0.08, "contrast": 0.9, "saturation": 0.94, "blur": 0.35, "hue": 14, "vignette": 0.03 },
+    "sunny-pearl": { "brightness": 0.12, "contrast": 0.94, "saturation": 1.08, "blur": 0, "hue": 5, "vignette": 0 },
+    "film-fade": { "brightness": 0.04, "contrast": 0.76, "saturation": 0.75, "blur": 0, "hue": -2, "vignette": 0.22 },
+    "noir": { "brightness": -0.06, "contrast": 1.34, "saturation": 0, "blur": 0, "hue": 0, "vignette": 0.38 }
   },
+  "effectLibrary": [
+    { "id": "vivid", "title": "Vivid Boost", "category": "Trending", "detail": "Clean contrast and color lift", "swatch": "violet" },
+    { "id": "neon-pop", "title": "Neon Pop", "category": "Trending", "detail": "Punchy gaming color", "swatch": "neon" },
+    { "id": "cinematic", "title": "Cinematic", "category": "Classic", "detail": "Moody contrast and vignette", "swatch": "cinema" },
+    { "id": "soft", "title": "Soft Glow", "category": "Classic", "detail": "Gentle bloom-style softness", "swatch": "pearl" },
+    { "id": "dream-blur", "title": "Dream Blur", "category": "Focus", "detail": "Dreamy soft-focus look", "swatch": "dream" },
+    { "id": "night-game", "title": "Night Game", "category": "Gaming", "detail": "Cool high-contrast gameplay", "swatch": "night" },
+    { "id": "retro", "title": "Retro Tape", "category": "Classic", "detail": "Warm faded color treatment", "swatch": "retro" },
+    { "id": "mono", "title": "Monochrome", "category": "Classic", "detail": "High-contrast black and white", "swatch": "mono" }
+  ],
+  "filterLibrary": [
+    { "id": "cream", "title": "Cream", "category": "Featured", "detail": "Warm softened highlights", "swatch": "cream" },
+    { "id": "cold-thrill", "title": "Cold Thrill", "category": "Hits", "detail": "Cool, sharper atmosphere", "swatch": "cold" },
+    { "id": "bronze-film", "title": "Bronze Film", "category": "Hits", "detail": "Bronze cinematic tint", "swatch": "bronze" },
+    { "id": "nature", "title": "Nature", "category": "Life", "detail": "Fresh green saturation", "swatch": "nature" },
+    { "id": "soft-blush", "title": "Soft Blush", "category": "Summer", "detail": "Rosy bright portrait finish", "swatch": "blush" },
+    { "id": "sunny-pearl", "title": "Sunny Pearl", "category": "Summer", "detail": "Bright sunlit color", "swatch": "sunny" },
+    { "id": "film-fade", "title": "Film Fade", "category": "CCD", "detail": "Lower-contrast film wash", "swatch": "fade" },
+    { "id": "noir", "title": "Noir", "category": "Photo Booth", "detail": "Deep black-and-white finish", "swatch": "noir" }
+  ],
+  "transitionLibrary": [
+    { "id": "crossfade", "title": "Dissolve", "detail": "Blends both clips over the selected duration", "swatch": "dissolve" },
+    { "id": "dip-black", "title": "Dip to Black", "detail": "Fades out, then brings the next clip up from black", "swatch": "black" },
+    { "id": "slide-left", "title": "Slide Left", "detail": "The next clip slides in from the right", "swatch": "left" },
+    { "id": "slide-right", "title": "Slide Right", "detail": "The next clip slides in from the left", "swatch": "right" }
+  ],
   "defaultOverlay": {
     "opacity": 0.9,
     "scale": 0.28,
@@ -31,5 +68,5 @@
     "bottom-center",
     "bottom-right"
   ],
-  "transitionTypes": ["none", "crossfade"]
+  "transitionTypes": ["none", "crossfade", "dip-black", "slide-left", "slide-right"]
 }

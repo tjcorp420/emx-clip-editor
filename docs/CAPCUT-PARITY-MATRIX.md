@@ -1,11 +1,11 @@
 # CapCut-Style Workflow Parity Matrix
 
-This is a factual implementation tracker for the V1.9 roadmap, not marketing copy. “Available” means connected to the running Electron app; “planned” is not a release promise.
+This is a factual implementation tracker for the V1.10 roadmap, not marketing copy. “Available” means connected to the running Electron app; “planned” is not a release promise.
 
-| Workflow area | Status in 1.9.0 visual-editing foundation | Evidence / next integration boundary |
+| Workflow area | Status in 1.10.0 visual-editing foundation | Evidence / next integration boundary |
 | --- | --- | --- |
 | Dense media browser | Available | Resources Media/Audio tabs, search/sort, display modes, thumbnail sizing, context actions, Ctrl/Shift multi-select, and safe batch project removal. |
-| Folder import choice | Available | A selected folder can import all supported direct children now or become the saved default directory for later selective multi-file import. |
+| Folder import choice | Available | A selected folder can import all supported direct children now or become the saved default directory for later selective multi-file import. Native Electron descriptors are normalized before browser-only File operations, preserving trusted native export paths. |
 | Native MP4 export | Available | Main-process FFmpeg export plus FFprobe validation. |
 | Permanent brand watermark | Available | Fixed main-process asset; position/opacity only; no custom logo/text/upload controls; opacity is clamped to 50%–100% in renderer and main process. |
 | In-app update status | Available when an HTTPS build feed is configured | `electron-updater` generic feed, manual download/install UX, version/progress/state reporting. |
@@ -16,8 +16,8 @@ This is a factual implementation tracker for the V1.9 roadmap, not marketing cop
 | Clip transform and crop | Partially available | Image overlays expose normalized position/scale/opacity. Video crop, rotation, and keyframed transform remain planned. |
 | Keyframes | Planned | Requires per-property timeline interpolation. |
 | Text/caption system | Planned | Requires project persistence, typography UI, preview and FFmpeg rendering. |
-| Effect rack and adjustment stack | Available for core adjustments | Selected video/image clips support named presets plus brightness, contrast, saturation, hue, blur, and vignette. The global output grade remains available. |
-| Video transitions | Available for Cross Fade | Applying Cross Fade overlaps the next video and emits matching alpha fade filters in the FFmpeg export graph. More transition families remain planned. |
+| Effect rack and adjustment stack | Available for a curated first library | Searchable Effects and Filters browsers apply named clip looks plus brightness, contrast, saturation, hue, blur, and vignette. Preview and native FFmpeg export use the same visual data. Dynamic/masked effects, body effects, keyframes, and downloadable packs remain planned. |
+| Video transitions | Available for four native transition types | Dissolve, Dip to Black, Slide Left, and Slide Right are applied between adjacent clips. The preview and FFmpeg graph use the same transition data; advanced wipes, 3D transitions, and transition packs remain planned. |
 | Audio gain/fades/speed | Available | Existing timeline/export controls. |
 | Audio waveform / automation | Planned | Requires cached analysis and curve data in project storage. |
 | Voice effects / beat sync | Planned | Requires Audio AI effect chain and beat-analysis cache. |

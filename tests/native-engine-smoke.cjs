@@ -32,6 +32,7 @@ function rawFrame(bin,input){
   const extra=path.join(dir,'extra.m4a');
   const out=path.join(dir,'out.mp4');
   const visualOutput=path.join(dir,'visual-out.mp4');
+  const slideOutput=path.join(dir,'slide-out.mp4');
   const watermarkInput=path.join(dir,'watermark-input.mp4');
   const watermarkOutput=path.join(dir,'watermark-out.mp4');
   const extracted=path.join(dir,'extracted.m4a');
@@ -87,6 +88,22 @@ function rawFrame(bin,input){
     throw new Error(`Visual export verification failed: duration=${visualDuration}`);
   }
 
+  const slideProject={
+    ...visualProject,
+    videoClips:[
+      {...visualProject.videoClips[0],transitionOut:'slide-left',transitionDuration:.5},
+      {...visualProject.videoClips[1],transitionIn:.5,transitionInStyle:'slide-left'}
+    ],
+    overlayClips:[]
+  };
+  const slideGraph=buildExportArgs(slideProject,new Map([[c1,{streams:[{codec_type:'audio'}]}],[c2,{streams:[{codec_type:'audio'}]}]]),slideOutput).filterGraph;
+  assert.ok(slideGraph.includes('overlay=x=if(lt(t\\,'),'Slide export graph must animate an incoming clip position.');
+  await exportProject({ffmpegPath:ffmpeg,ffprobePath:ffprobe,outputPath:slideOutput,project:slideProject});
+  const slideInfo=await probe(ffprobe,slideOutput);
+  if(!slideInfo.streams?.some(stream=>stream.codec_type==='video')||Number(slideInfo.format?.duration||0)<3.3){
+    throw new Error('Slide transition export verification failed.');
+  }
+
   await exportProject({
     ffmpegPath:ffmpeg,ffprobePath:ffprobe,outputPath:watermarkOutput,
     project:{
@@ -105,6 +122,7 @@ function rawFrame(bin,input){
   console.log('EMX NATIVE ENGINE SMOKE TEST: PASS');
   console.log(`Output duration: ${dur.toFixed(2)}s`);
   console.log(`Visual overlay + cross-fade output duration: ${visualDuration.toFixed(2)}s`);
+  console.log(`Slide transition output: ${slideOutput}`);
   console.log(`Permanent watermark frame pixels: ${visiblePixels}`);
   console.log(`Output: ${out}`);
 })().catch(err=>{console.error(err);process.exit(1)});
