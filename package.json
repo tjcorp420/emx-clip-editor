@@ -1,0 +1,102 @@
+{
+  "name": "emx-clip-studio",
+  "productName": "EMX Clip Studio",
+  "version": "1.8.2",
+  "description": "EMX Clip Studio V1.8.2 - reliable timeline selection, permanent 50% watermark floor, and selective folder import",
+  "private": true,
+  "main": "electron/main.cjs",
+  "type": "module",
+  "scripts": {
+    "dev:web": "vite --host 127.0.0.1",
+    "dev:desktop": "concurrently -k \"npm:dev:web\" \"wait-on http://127.0.0.1:5173 && electron . --dev\"",
+    "build:web": "vite build",
+    "dist": "npm run build:web && electron-builder --win --config electron-builder.config.cjs --publish never",
+    "dist:portable": "npm run build:web && electron-builder --win portable",
+    "dist:installer": "npm run build:web && electron-builder --win nsis --config electron-builder.config.cjs --publish never",
+    "preview": "vite preview",
+    "verify:engine": "node tests/native-engine-smoke.cjs",
+    "verify:watermark": "node tests/watermark-contract.cjs",
+    "verify:update": "node tests/update-state-contract.cjs && node tests/update-service-contract.cjs",
+    "check:js": "node --check src/main.js && node --check src/lib/timelineMath.js && node --check src/lib/selection.js && node --check electron/main.cjs && node --check electron/preload.cjs && node --check electron/exporter.cjs && node --check electron/branding.cjs && node --check electron/update-state.cjs && node --check electron/updater.cjs && node --check electron/ai-runtime.cjs && node --check electron/audio-ai.cjs && node --check scripts/prepare-native.cjs && node --check scripts/prepare-ai-runtime.cjs && node --check scripts/release-win.cjs && node --check tests/native-engine-smoke.cjs && node --check tests/timeline-math-smoke.mjs && node --check tests/selection-smoke.mjs && node --check tests/ui-contract-smoke.mjs && node --check tests/import-workflow-contract.cjs && node --check tests/audio-ai-contract.cjs && node --check tests/friend-runtime-contract.cjs && node --check tests/watermark-contract.cjs && node --check tests/update-state-contract.cjs && node --check tests/update-service-contract.cjs",
+    "prepare:native": "node scripts/prepare-native.cjs",
+    "verify:timeline": "node tests/timeline-math-smoke.mjs && node tests/selection-smoke.mjs",
+    "verify:import": "node tests/import-workflow-contract.cjs",
+    "verify:ui": "node tests/ui-contract-smoke.mjs",
+    "verify:ai-contract": "node tests/audio-ai-contract.cjs",
+    "prepare:ai-runtime": "node scripts/prepare-ai-runtime.cjs",
+    "verify:friend-runtime-contract": "node tests/friend-runtime-contract.cjs",
+    "dist:fast-friend": "npm run build:web && electron-builder --win nsis --config electron-builder.config.cjs --publish never",
+    "dist:offline-ai": "npm run build:web && electron-builder --win nsis --config electron-builder.config.cjs --publish never",
+    "release:win": "node scripts/release-win.cjs"
+  },
+  "dependencies": {
+    "electron-updater": "6.8.9",
+    "ffmpeg-static": "^5.2.0",
+    "ffprobe-static": "^3.1.0"
+  },
+  "devDependencies": {
+    "concurrently": "^9.2.1",
+    "electron": "^37.4.0",
+    "electron-builder": "^26.0.12",
+    "vite": "^7.1.3",
+    "wait-on": "^8.0.4"
+  },
+  "build": {
+    "appId": "com.emxtweaks.clipstudio",
+    "productName": "EMX Clip Studio",
+    "directories": {
+      "output": "release",
+      "buildResources": "build"
+    },
+    "files": [
+      "dist/**/*",
+      "electron/**/*",
+      "package.json",
+      "!node_modules/ffmpeg-static/**",
+      "!node_modules/ffprobe-static/**"
+    ],
+    "asar": true,
+    "win": {
+      "icon": "build/emx-clip-studio.ico",
+      "target": [
+        {
+          "target": "nsis",
+          "arch": [
+            "x64"
+          ]
+        }
+      ],
+      "artifactName": "EMX-Clip-Studio-${version}-${arch}.${ext}",
+      "signExecutable": false
+    },
+    "nsis": {
+      "oneClick": false,
+      "allowToChangeInstallationDirectory": true,
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true,
+      "shortcutName": "EMX Clip Studio",
+      "installerIcon": "build/emx-clip-studio.ico",
+      "uninstallerIcon": "build/emx-clip-studio.ico",
+      "installerHeaderIcon": "build/emx-clip-studio.ico"
+    },
+    "extraResources": [
+      {
+        "from": "build/native/ffmpeg.exe",
+        "to": "bin/ffmpeg.exe"
+      },
+      {
+        "from": "build/native/ffprobe.exe",
+        "to": "bin/ffprobe.exe"
+      },
+      {
+        "from": "build/branding/EMXCLIPSWATERMARK-original.png",
+        "to": "branding/EMXCLIPSWATERMARK-original.png"
+      },
+      {
+        "from": "build/branding/EMXCLIPSWATERMARK-render.png",
+        "to": "branding/EMXCLIPSWATERMARK-render.png"
+      }
+    ]
+  },
+  "author": "EMX TWEAKS"
+}

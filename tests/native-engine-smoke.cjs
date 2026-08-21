@@ -1,0 +1,86 @@
+
+const fs=require('fs');
+const os=require('os');
+const path=require('path');
+const {spawnSync}=require('child_process');
+const {exportProject,extractAudio,probe}=require('../electron/exporter.cjs');
+const {normalizeWatermark}=require('../electron/branding.cjs');
+
+function resolveBins(){
+  let ffmpeg=process.env.EMX_FFMPEG_PATH;
+  let ffprobe=process.env.EMX_FFPROBE_PATH;
+  if(!ffmpeg)ffmpeg=require('ffmpeg-static');
+  if(!ffprobe)ffprobe=require('ffprobe-static').path;
+  return{ffmpeg,ffprobe};
+}
+function run(bin,args){
+  const r=spawnSync(bin,args,{stdio:'pipe',encoding:'utf8',windowsHide:true});
+  if(r.status!==0)throw new Error(`${bin} failed:\n${r.stderr}`);
+}
+function rawFrame(bin,input){
+  const r=spawnSync(bin,['-ss','0.8','-i',input,'-frames:v','1','-f','rawvideo','-pix_fmt','rgb24','pipe:1'],{stdio:'pipe',windowsHide:true});
+  if(r.status!==0)throw new Error(`Could not extract watermark verification frame:\n${r.stderr}`);
+  return r.stdout;
+}
+
+(async()=>{
+  const {ffmpeg,ffprobe}=resolveBins();
+  const dir=fs.mkdtempSync(path.join(os.tmpdir(),'emx-clip-smoke-'));
+  const c1=path.join(dir,'clip1.mp4');
+  const c2=path.join(dir,'clip2.mp4');
+  const extra=path.join(dir,'extra.m4a');
+  const out=path.join(dir,'out.mp4');
+  const watermarkInput=path.join(dir,'watermark-input.mp4');
+  const watermarkOutput=path.join(dir,'watermark-out.mp4');
+  const extracted=path.join(dir,'extracted.m4a');
+  const watermarkAsset=path.join(__dirname,'..','build','branding','EMXCLIPSWATERMARK-render.png');
+
+  run(ffmpeg,['-y','-f','lavfi','-i','testsrc=size=640x360:rate=30','-f','lavfi','-i','sine=frequency=440:sample_rate=48000','-t','2','-c:v','libx264','-pix_fmt','yuv420p','-c:a','aac',c1]);
+  run(ffmpeg,['-y','-f','lavfi','-i','testsrc2=size=640x360:rate=30','-f','lavfi','-i','sine=frequency=660:sample_rate=48000','-t','2','-c:v','libx264','-pix_fmt','yuv420p','-c:a','aac',c2]);
+  run(ffmpeg,['-y','-f','lavfi','-i','sine=frequency=880:sample_rate=48000','-t','1.2','-c:a','aac',extra]);
+  run(ffmpeg,['-y','-f','lavfi','-i','color=c=black:s=640x360:r=30','-f','lavfi','-i','sine=frequency=330:sample_rate=48000','-t','2','-c:v','libx264','-pix_fmt','yuv420p','-c:a','aac',watermarkInput]);
+
+  await extractAudio({inputPath:c1,outputPath:extracted,ffmpegPath:ffmpeg,ffprobePath:ffprobe});
+
+  await exportProject({
+    ffmpegPath:ffmpeg,ffprobePath:ffprobe,outputPath:out,
+    project:{
+      videoClips:[
+        {name:'c1',path:c1,start:0,trimStart:0,trimEnd:2,speed:1,volume:1},
+        {name:'c2',path:c2,start:3,trimStart:0,trimEnd:2,speed:1,volume:1}
+      ],
+      audioClips:[
+        {name:'extra',path:extra,start:.5,trimStart:0,trimEnd:1.2,speed:1,volume:.5}
+      ],
+      effects:{brightness:0,contrast:1,saturation:1,blur:0},
+      branding:{...normalizeWatermark({opacity:.75,position:'bottom-right'}),assetPath:watermarkAsset},
+      export:{width:640,height:360,fps:30,crf:25,preset:'ultrafast'}
+    }
+  });
+
+  const info=await probe(ffprobe,out);
+  const dur=Number(info.format?.duration||0);
+  const hasV=info.streams?.some(s=>s.codec_type==='video');
+  const hasA=info.streams?.some(s=>s.codec_type==='audio');
+  if(!hasV||!hasA||dur<4.8)throw new Error(`Smoke export verification failed: duration=${dur}, video=${hasV}, audio=${hasA}`);
+
+  await exportProject({
+    ffmpegPath:ffmpeg,ffprobePath:ffprobe,outputPath:watermarkOutput,
+    project:{
+      videoClips:[{name:'watermark',path:watermarkInput,start:0,trimStart:0,trimEnd:2,speed:1,volume:1}],
+      audioClips:[],effects:{brightness:0,contrast:1,saturation:1,blur:0},
+      branding:{...normalizeWatermark({opacity:0,position:'top-left'}),assetPath:watermarkAsset},
+      export:{width:640,height:360,fps:30,crf:25,preset:'ultrafast'}
+    }
+  });
+  const pixels=rawFrame(ffmpeg,watermarkOutput);
+  let visiblePixels=0;
+  for(let i=0;i<pixels.length;i+=3){
+    if(pixels[i]>18||pixels[i+1]>18||pixels[i+2]>18)visiblePixels++;
+  }
+  if(visiblePixels<150)throw new Error(`Permanent watermark frame verification failed: only ${visiblePixels} non-black pixels.`);
+  console.log('EMX NATIVE ENGINE SMOKE TEST: PASS');
+  console.log(`Output duration: ${dur.toFixed(2)}s`);
+  console.log(`Permanent watermark frame pixels: ${visiblePixels}`);
+  console.log(`Output: ${out}`);
+})().catch(err=>{console.error(err);process.exit(1)});
