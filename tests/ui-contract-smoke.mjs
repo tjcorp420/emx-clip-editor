@@ -73,7 +73,23 @@ for (const token of [
   'Set as Default Import Folder',
   '50%–100%'
 ]) {
-  assert.ok(s.includes(token), `V1.8.2 selection/import contract missing ${token}.`);
+  assert.ok(s.includes(token), `V1.9.0 selection/import contract missing ${token}.`);
+}
+
+for (const token of [
+  'id="filterImage"',
+  'id="overlayLane"',
+  'id="addOverlayTrack"',
+  'id="previewOverlayLayer"',
+  'id="previewTransitionVideo"',
+  'id="clipVisualPreset"',
+  'id="transitionOut"',
+  'Cross Fade',
+  'updateOverlayPreview',
+  'configureCrossFade',
+  'overlayClips:[]'
+]) {
+  assert.ok(s.includes(token), `V1.9 visual editing contract missing ${token}.`);
 }
 
 console.log('EMX UI CONTRACT SMOKE TEST: PASS');

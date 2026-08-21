@@ -54,6 +54,7 @@ run(process.execPath, ['tests/timeline-math-smoke.mjs']);
 run(process.execPath, ['tests/selection-smoke.mjs']);
 run(process.execPath, ['tests/watermark-contract.cjs']);
 run(process.execPath, ['tests/import-workflow-contract.cjs']);
+run(process.execPath, ['tests/visual-editing-contract.cjs']);
 run(process.execPath, ['tests/update-state-contract.cjs']);
 run(process.execPath, ['tests/update-service-contract.cjs']);
 run(process.execPath, ['tests/ui-contract-smoke.mjs']);

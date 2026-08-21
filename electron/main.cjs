@@ -18,7 +18,8 @@ const mediaExtensions=new Map([
   ['.mp4','video/mp4'],['.m4v','video/mp4'],['.mov','video/quicktime'],['.mkv','video/x-matroska'],
   ['.avi','video/x-msvideo'],['.webm','video/webm'],['.wmv','video/x-ms-wmv'],
   ['.mp3','audio/mpeg'],['.wav','audio/wav'],['.m4a','audio/mp4'],['.aac','audio/aac'],
-  ['.flac','audio/flac'],['.ogg','audio/ogg'],['.opus','audio/ogg']
+  ['.flac','audio/flac'],['.ogg','audio/ogg'],['.opus','audio/ogg'],
+  ['.png','image/png'],['.jpg','image/jpeg'],['.jpeg','image/jpeg'],['.webp','image/webp'],['.gif','image/gif']
 ]);
 
 protocol.registerSchemesAsPrivileged([{scheme:'emx-media',privileges:{standard:true,secure:true,supportFetchAPI:true,corsEnabled:true,stream:true}}]);
@@ -107,7 +108,9 @@ function createMediaDescriptor(candidate){
   };
 }
 function mediaDialogFilters(){
-  return [{name:'Video and audio',extensions:[...mediaExtensions.keys()].map(ext=>ext.slice(1))}];
+  return [
+    {name:'Video, audio, and image overlays',extensions:[...mediaExtensions.keys()].map(ext=>ext.slice(1))}
+  ];
 }
 
 function createWindow(){
