@@ -1,8 +1,8 @@
 # CapCut-Style Workflow Parity Matrix
 
-This is a factual implementation tracker for the V1.11 roadmap, not marketing copy. “Available” means connected to the running Electron app and native export; “planned” is not a release promise.
+This is a factual implementation tracker for the V1.11 roadmap, not marketing copy. “Available” means connected to the running Electron app and native export; “planned” is not a release promise. The user-designated benchmark is CapCut's [9:16 TikTok web editor](https://www.capcut.com/editor?scenario=tiktok&scale=9%3A16); because it is a JavaScript application whose surface changes over time, stable capability claims are cross-checked against CapCut's official feature documentation below.
 
-| Workflow area | Status in 1.11.0 timed-effects milestone | Evidence / next integration boundary |
+| Workflow area | Status in 1.11.1 timed-effects milestone | Evidence / next integration boundary |
 | --- | --- | --- |
 | Dense media browser | Available | Resources Media/Audio tabs, search/sort, display modes, thumbnail sizing, context actions, Ctrl/Shift multi-select, and safe batch project removal. |
 | Folder import choice | Available | A selected folder can import all supported direct children now or become the saved default directory for later selective multi-file import. Native Electron descriptors are normalized before browser-only File operations, preserving trusted native export paths. |
@@ -10,6 +10,7 @@ This is a factual implementation tracker for the V1.11 roadmap, not marketing co
 | Permanent brand watermark | Available | Fixed main-process asset; position/opacity only; no custom logo/text/upload controls; opacity is clamped to 50%–100% in renderer and main process. |
 | In-app update status | Available when an HTTPS build feed is configured | `electron-updater` generic feed, manual download/install UX, version/progress/state reporting. |
 | Automatic checks | Available for update-enabled installed builds | Starts after launch; dev/feedless builds visibly remain Offline. |
+| Timeline/Resources preview handoff | Available | Selecting Resources media stops the timeline animation loop and all timeline audio, invalidates asynchronous playback work, and prevents stale timeline/media requests from reclaiming the shared preview element. |
 | Video, audio, image overlay, and effect lanes | Available | Timeline click selection is reconciled through render/edit operations. Ctrl/Shift selects multiple clips for batch deletion. PNG, JPG/JPEG, WebP, and GIF imports create timed image overlays; animated effects are independent timed clips. |
 | Precise timeline interaction | Available | Trimmed clips use pointer-offset-aware drag math and can return to 0:00. The playhead is directly draggable. Right-click does not seek, and Split at Playhead preserves the editor's chosen time. |
 | Freeze frame | Available | A video context action splits at the playhead, inserts a two-second held-frame clip, moves the continuation, and exports the held source frame through FFmpeg. |

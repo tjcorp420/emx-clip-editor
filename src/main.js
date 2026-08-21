@@ -4,6 +4,7 @@ import { getStemEngineStatus } from './lib/stems.js';
 import { clipDuration, clipAtTime as timelineClipAtTime, magneticStartForClips, timelineStartFromPointer, trimLeftByDelta, trimRightByDelta, splitClipAtTime } from './lib/timelineMath.js';
 import { reconcileSelection, selectIds } from './lib/selection.js';
 import { normalizeImportInput } from './lib/importInput.js';
+import { createPlaybackSession } from './lib/playbackSession.js';
 import visualConfig from '../electron/visuals.json';
 
 const app=document.querySelector('#app');
@@ -20,11 +21,12 @@ const state={
   ffmpegLog:''
 };
 const uid=()=>crypto.randomUUID?.()||`${Date.now()}_${Math.random().toString(16).slice(2)}`;
+const timelinePlaybackSession=createPlaybackSession();
 
 app.innerHTML=`
 <div class="app">
 <header class="topbar">
-  <div class="brand"><img class="logo" src="./emx-logo.png" onerror="this.style.display='none'" alt="EMX"><div><h1>EMX CLIP STUDIO</h1><small id="appVersionLabel">Desktop Timeline Editor • V1.11.0</small></div></div>
+  <div class="brand"><img class="logo" src="./emx-logo.png" onerror="this.style.display='none'" alt="EMX"><div><h1>EMX CLIP STUDIO</h1><small id="appVersionLabel">Desktop Timeline Editor • V1.11.1</small></div></div>
   <div class="top-actions">
     <button class="btn undo-last" id="undoLastBtn" disabled>↶ UNDO LAST</button><button class="btn" id="redoBtn" disabled>↷ Redo</button><button class="btn" id="newProject">New</button>
     <button class="btn" id="openFolder">📁 Clips Folder</button>
@@ -690,6 +692,8 @@ function waitForPreviewReady(el,timeoutMs=7000){
   });
 }
 async function selectMedia(id,autoplay=true,selectionOptions={}){
+  stopTimelinePlayback();
+  const requestId=++state.previewRequestId;
   setMediaSelection(id,selectionOptions);state.timelinePreview=false;state.activeTimelineClipId=null;$('timelineModeBadge').style.display='none';renderMedia();updateInspector();
   const m=state.media.find(x=>x.id===id);if(!m)return;
   v.pause();transitionVideo.pause();a.pause();v.style.display='none';transitionVideo.style.display='none';a.style.display='none';previewImage.style.display='none';$('previewEmpty').style.display='none';
@@ -709,7 +713,7 @@ async function selectMedia(id,autoplay=true,selectionOptions={}){
   el.onloadedmetadata=onMeta;
   try{
     await waitForPreviewReady(el);
-    if(state.selectedMediaId!==id||el.src!==m.url)return;
+    if(requestId!==state.previewRequestId||state.timelinePreview||state.selectedMediaId!==id||el.src!==m.url)return;
     onMeta();
     if(m.type==='video'&&!m.thumb){
       const thumbnail=await makeThumbnail(m.url,m.mime,m.duration);
@@ -719,6 +723,7 @@ async function selectMedia(id,autoplay=true,selectionOptions={}){
     if(state.selectedMediaId===id)notify(`Preview unavailable: ${error?.message||error}`,'error','Media Preview Failed');
     return;
   }
+  if(requestId!==state.previewRequestId||state.timelinePreview)return;
   if(autoplay&&state.settings.autoplayPreview){
     try{
       await el.play();
@@ -1665,6 +1670,7 @@ async function syncExternalTimelineAudio(t,playing){
 async function previewTimelineAt(t,autoplay=false){
   const requestId=++state.previewRequestId;
   state.timelinePreview=true;
+  v.onloadedmetadata=null;a.onloadedmetadata=null;
   state.playhead=Math.max(0,Math.min(projectEnd()||0,t));
   $('timelineModeBadge').style.display='block';
   a.pause();a.style.display='none';previewImage.style.display='none';
@@ -1764,6 +1770,7 @@ function updateTimelineTimeReadout(){
 }
 
 function stopTimelinePlayback(){
+  timelinePlaybackSession.stop();
   state.previewRequestId++;
   if(state.timelineTimer){
     cancelAnimationFrame(state.timelineTimer);
@@ -1784,12 +1791,15 @@ async function startTimelinePlayback(){
   state.timelinePlaying=true;
   state.isPlaying=true;
   $('playPause').textContent='⏸';
+  const playbackToken=timelinePlaybackSession.begin();
+  const ownsPlayback=()=>state.timelinePlaying&&state.timelinePreview&&timelinePlaybackSession.owns(playbackToken);
 
   await previewTimelineAt(state.playhead,true);
+  if(!ownsPlayback())return;
   let last=performance.now();
 
   async function tick(now){
-    if(!state.timelinePlaying)return;
+    if(!ownsPlayback()){state.timelineTimer=null;return}
     const dt=Math.min(.08,(now-last)/1000);
     last=now;
     state.playhead+=dt;
@@ -1809,6 +1819,7 @@ async function startTimelinePlayback(){
       const transitionNeedsRefresh=Boolean(secondary)!==(transitionVideo.style.display!=='none')||(secondary&&transitionVideo.dataset.clipId!==secondary.id);
       if(currentId!==c.id || v.style.display==='none'||transitionNeedsRefresh){
         await previewTimelineAt(state.playhead,true);
+        if(!ownsPlayback()){state.timelineTimer=null;return}
       }else{
         const expected=previewSourceTime(c,state.playhead);
         if(Math.abs((v.currentTime||0)-expected)>.35){
@@ -1818,15 +1829,18 @@ async function startTimelinePlayback(){
         v.volume=Math.max(0,Math.min(1,c.volume??1))*Math.max(0,Math.min(1,+$('masterVolume').value||1));
         v.style.opacity=String(previewClipOpacity(c,state.playhead));
         if(v.paused){try{await v.play()}catch{}}
+        if(!ownsPlayback()){state.timelineTimer=null;return}
         if(secondary&&transitionVideo.dataset.clipId===secondary.id){
           const transitionExpected=previewSourceTime(secondary,state.playhead);
           if(Math.abs((transitionVideo.currentTime||0)-transitionExpected)>.35){try{transitionVideo.currentTime=transitionExpected}catch{}}
           transitionVideo.playbackRate=Math.max(.25,Math.min(4,secondary.speed||1));
           transitionVideo.style.opacity=String(previewClipOpacity(secondary,state.playhead));
           if(transitionVideo.paused){try{await transitionVideo.play()}catch{}}
+          if(!ownsPlayback()){state.timelineTimer=null;return}
         }
         applyPreviewFx(c,secondary);
         await syncExternalTimelineAudio(state.playhead,true);
+        if(!ownsPlayback()){state.timelineTimer=null;return}
         updateOverlayPreview();renderPlayhead();
         updateTimelineTimeReadout();
       }
@@ -1834,6 +1848,7 @@ async function startTimelinePlayback(){
       v.pause();transitionVideo.pause();v.style.display='none';transitionVideo.style.display='none';
       const activeAudio=audioClipsAtTime(state.playhead);
       await syncExternalTimelineAudio(state.playhead,true);
+      if(!ownsPlayback()){state.timelineTimer=null;return}
       if(activeAudio.length){
         const first=activeAudio[0],media=state.media.find(m=>m.id===first.mediaId);
         $('previewEmpty').style.display='none';
@@ -1851,10 +1866,11 @@ async function startTimelinePlayback(){
       updateOverlayPreview();renderPlayhead();updateTimelineTimeReadout();
     }
 
-    state.timelineTimer=requestAnimationFrame(tick);
+    if(ownsPlayback())state.timelineTimer=requestAnimationFrame(tick);
+    else state.timelineTimer=null;
   }
 
-  state.timelineTimer=requestAnimationFrame(tick);
+  if(ownsPlayback())state.timelineTimer=requestAnimationFrame(tick);
 }
 
 
@@ -2723,11 +2739,11 @@ function renderUpdateState(update){
 }
 async function hydrateUpdateCenter(){
   if(!window.emxDesktop?.available){
-    renderUpdateState({status:'OFFLINE',currentVersion:'1.11.0',channel:'latest',configured:false,message:'Update Center requires the desktop application.',progress:{}});
+    renderUpdateState({status:'OFFLINE',currentVersion:'1.11.1',channel:'latest',configured:false,message:'Update Center requires the desktop application.',progress:{}});
     return;
   }
   try{renderUpdateState(await window.emxDesktop.updateStatus())}
-  catch(error){renderUpdateState({status:'UPDATE FAILED',currentVersion:'1.11.0',channel:'latest',configured:false,message:String(error?.message||error),progress:{}})}
+  catch(error){renderUpdateState({status:'UPDATE FAILED',currentVersion:'1.11.1',channel:'latest',configured:false,message:String(error?.message||error),progress:{}})}
 }
 if(window.emxDesktop?.available&&window.emxDesktop.onUpdateEvent){window.emxDesktop.onUpdateEvent(renderUpdateState)}
 function notifyManualUpdateCheck(update){

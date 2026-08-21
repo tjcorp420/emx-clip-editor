@@ -37,7 +37,7 @@ function finish(code, message) {
     };
   })()`);
   window.destroy();
-  assert.match(result.version, /V1\.11\.0/);
+  assert.match(result.version, /V1\.11\.1/);
   assert.equal(result.effectLane, true);
   assert.equal(result.effectCards, 8);
   assert.equal(result.effectsDraggable, true);

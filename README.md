@@ -1,6 +1,6 @@
-# EMX Clip Studio 1.11.0
+# EMX Clip Studio 1.11.1
 
-EMX Clip Studio is a Windows Electron timeline editor backed by private FFmpeg/FFprobe binaries. Version 1.11.0 adds precise timeline interaction, a real timed animated-effects track, freeze frames, and a high-quality vertical export preset while preserving the V1.10.1 desktop import/playback repair.
+EMX Clip Studio is a Windows Electron timeline editor backed by private FFmpeg/FFprobe binaries. Version 1.11.1 fixes preview ownership when switching from a playing timeline to a Resources clip, preventing frozen previews, competing seeks, and rapid audio ticking. It retains the V1.11 timed-effects, freeze-frame, precise-timeline, and vertical-export milestone.
 
 ## What is implemented in this build
 
@@ -9,6 +9,7 @@ EMX Clip Studio is a Windows Electron timeline editor backed by private FFmpeg/F
 - Folder workflow: choose a folder and either import all supported files directly inside it or set it as the persistent default location opened by selective multi-file **Import Media**.
 - A permanent supplied **EMX Clips** PNG watermark. Export always resolves the bundled resource in the main process; the renderer can set only one of nine positions and opacity from **50% to 100%**. The main process enforces the same lower bound.
 - Timeline selection is reconciled after edits and renders. A click is no longer treated as a move; Ctrl/Shift selection supports batch clip deletion, while speed/volume/fades can be applied to the selected clip set.
+- Timeline playback and Resources preview now use an explicit playback-session handoff. Selecting any Resources video/audio/image stops the timeline animation frame loop, pauses every timeline audio player, invalidates in-flight timeline work, and prevents an interrupted preview request from restarting after ownership changes.
 - Trimmed clips remain draggable to exactly 0:00 using grab-offset-aware timeline math. The green playhead has a larger draggable hit target and continuously scrubs the preview. Right-click opens clip actions without moving the playhead, so **Split at Playhead** uses the position the editor chose.
 - Video right-click actions include a real **Freeze Frame at Playhead** operation. It splits the source, inserts a two-second held frame, moves the continuation, and creates an ordinary movable/trim-capable timeline clip. **Move Clip to Playhead** is also available.
 - A dedicated **OVERLAYS** timeline lane supports imported PNG, JPG/JPEG, WebP, and GIF images as timed visual overlays. Each overlay has editable position, opacity, and scale, and is composited in the preview and FFmpeg MP4 export.
@@ -21,7 +22,7 @@ EMX Clip Studio is a Windows Electron timeline editor backed by private FFmpeg/F
 
 ## Important release boundaries
 
-1. V1.11.0 is currently an **unsigned** Windows build. The Update Center reports that fact; do not describe a release as signed until code-signing has actually been configured and verified.
+1. V1.11.1 is currently an **unsigned** Windows build. The Update Center reports that fact; do not describe a release as signed until code-signing has actually been configured and verified.
 2. A normal local/dev build deliberately reports **Offline** in the Update Center. It does not invent an update URL.
 3. This is not complete CapCut parity. V1.11 delivers a solid timed-effects and short-form export layer, but keyframes, masks, text/captions, auto reframe, tracking, stabilization, templates, project files/autosave, and many effect families remain explicitly tracked in [docs/CAPCUT-PARITY-MATRIX.md](docs/CAPCUT-PARITY-MATRIX.md).
 
@@ -42,6 +43,7 @@ Use Electron desktop mode for native extraction/export checks; `npm run dev:web`
 npm run prepare:native
 npm run check:js
 npm run verify:timeline
+npm run verify:playback
 npm run verify:import
 npm run verify:watermark
 npm run verify:update
@@ -52,7 +54,7 @@ npm run verify:engine
 npm run build:web
 ```
 
-`verify:desktop-media` runs a hidden Electron window against a protected custom media URL and verifies metadata, playback, seeking, and canvas thumbnail capture. `verify:engine` creates synthetic media, exercises audio extraction, all eight animated effect filters, cross-fade and slide transitions, timed image compositing, a held freeze frame in a vertical center-crop export, and the permanent watermark, then uses FFprobe/frame inspection to confirm valid output.
+`verify:playback` verifies that stopping or replacing a playback session permanently invalidates the old asynchronous timeline loop and checks the renderer integration that hands ownership to Resources preview. `verify:desktop-media` runs a hidden Electron window against a protected custom media URL and verifies metadata, playback, seeking, and canvas thumbnail capture. `verify:engine` creates synthetic media, exercises audio extraction, all eight animated effect filters, cross-fade and slide transitions, timed image compositing, a held freeze frame in a vertical center-crop export, and the permanent watermark, then uses FFprobe/frame inspection to confirm valid output.
 
 ## Windows release
 
