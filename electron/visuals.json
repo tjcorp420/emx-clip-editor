@@ -1,0 +1,908 @@
+{
+  "defaultClipVisual": {
+    "brightness": 0,
+    "contrast": 1,
+    "saturation": 1,
+    "blur": 0,
+    "hue": 0,
+    "vignette": 0,
+    "zoom": 1,
+    "panX": 0,
+    "panY": 0
+  },
+  "presets": {
+    "none": {
+      "brightness": 0,
+      "contrast": 1,
+      "saturation": 1,
+      "blur": 0,
+      "hue": 0,
+      "vignette": 0
+    },
+    "vivid": {
+      "brightness": 0.02,
+      "contrast": 1.16,
+      "saturation": 1.32,
+      "blur": 0,
+      "hue": 0,
+      "vignette": 0
+    },
+    "cinematic": {
+      "brightness": -0.04,
+      "contrast": 1.18,
+      "saturation": 0.82,
+      "blur": 0,
+      "hue": -4,
+      "vignette": 0.3
+    },
+    "mono": {
+      "brightness": 0,
+      "contrast": 1.08,
+      "saturation": 0,
+      "blur": 0,
+      "hue": 0,
+      "vignette": 0.12
+    },
+    "retro": {
+      "brightness": 0.05,
+      "contrast": 0.88,
+      "saturation": 1.2,
+      "blur": 0,
+      "hue": -9,
+      "vignette": 0.18
+    },
+    "soft": {
+      "brightness": 0.04,
+      "contrast": 0.94,
+      "saturation": 1.08,
+      "blur": 0.7,
+      "hue": 0,
+      "vignette": 0
+    },
+    "neon-pop": {
+      "brightness": 0.03,
+      "contrast": 1.28,
+      "saturation": 1.55,
+      "blur": 0,
+      "hue": 10,
+      "vignette": 0.08
+    },
+    "dream-blur": {
+      "brightness": 0.08,
+      "contrast": 0.86,
+      "saturation": 1.15,
+      "blur": 1.2,
+      "hue": 4,
+      "vignette": 0
+    },
+    "night-game": {
+      "brightness": -0.12,
+      "contrast": 1.22,
+      "saturation": 1.12,
+      "blur": 0,
+      "hue": -12,
+      "vignette": 0.3
+    },
+    "cream": {
+      "brightness": 0.09,
+      "contrast": 0.9,
+      "saturation": 0.84,
+      "blur": 0,
+      "hue": 8,
+      "vignette": 0.04
+    },
+    "cold-thrill": {
+      "brightness": -0.02,
+      "contrast": 1.16,
+      "saturation": 0.76,
+      "blur": 0,
+      "hue": -22,
+      "vignette": 0.2
+    },
+    "bronze-film": {
+      "brightness": 0.02,
+      "contrast": 1.08,
+      "saturation": 0.9,
+      "blur": 0,
+      "hue": 24,
+      "vignette": 0.24
+    },
+    "nature": {
+      "brightness": 0.05,
+      "contrast": 1.05,
+      "saturation": 1.26,
+      "blur": 0,
+      "hue": -6,
+      "vignette": 0
+    },
+    "soft-blush": {
+      "brightness": 0.08,
+      "contrast": 0.9,
+      "saturation": 0.94,
+      "blur": 0.35,
+      "hue": 14,
+      "vignette": 0.03
+    },
+    "sunny-pearl": {
+      "brightness": 0.12,
+      "contrast": 0.94,
+      "saturation": 1.08,
+      "blur": 0,
+      "hue": 5,
+      "vignette": 0
+    },
+    "film-fade": {
+      "brightness": 0.04,
+      "contrast": 0.76,
+      "saturation": 0.75,
+      "blur": 0,
+      "hue": -2,
+      "vignette": 0.22
+    },
+    "noir": {
+      "brightness": -0.06,
+      "contrast": 1.34,
+      "saturation": 0,
+      "blur": 0,
+      "hue": 0,
+      "vignette": 0.38
+    },
+    "warm-glow": {
+      "brightness": 0.05,
+      "contrast": 1.06,
+      "saturation": 1.12,
+      "blur": 0,
+      "hue": 8,
+      "vignette": 0
+    },
+    "cool-mist": {
+      "brightness": 0.06,
+      "contrast": 0.96,
+      "saturation": 0.92,
+      "blur": 0,
+      "hue": -10,
+      "vignette": 0
+    },
+    "teal-orange": {
+      "brightness": -0.02,
+      "contrast": 1.22,
+      "saturation": 1.18,
+      "blur": 0,
+      "hue": -6,
+      "vignette": 0.18
+    },
+    "vintage-fade": {
+      "brightness": 0.08,
+      "contrast": 0.86,
+      "saturation": 0.78,
+      "blur": 0,
+      "hue": 6,
+      "vignette": 0.22
+    },
+    "high-key": {
+      "brightness": 0.14,
+      "contrast": 0.94,
+      "saturation": 1.04,
+      "blur": 0,
+      "hue": 0,
+      "vignette": 0
+    },
+    "low-key": {
+      "brightness": -0.12,
+      "contrast": 1.3,
+      "saturation": 0.88,
+      "blur": 0,
+      "hue": 0,
+      "vignette": 0.36
+    },
+    "matte-black": {
+      "brightness": 0.04,
+      "contrast": 0.88,
+      "saturation": 0.9,
+      "blur": 0,
+      "hue": 0,
+      "vignette": 0.14
+    },
+    "golden-hour": {
+      "brightness": 0.07,
+      "contrast": 1.08,
+      "saturation": 1.24,
+      "blur": 0,
+      "hue": 12,
+      "vignette": 0.12
+    },
+    "blue-hour": {
+      "brightness": -0.04,
+      "contrast": 1.1,
+      "saturation": 1.06,
+      "blur": 0,
+      "hue": -18,
+      "vignette": 0.18
+    },
+    "neon-city": {
+      "brightness": 0.02,
+      "contrast": 1.24,
+      "saturation": 1.5,
+      "blur": 0,
+      "hue": -4,
+      "vignette": 0.24
+    },
+    "pastel-pop": {
+      "brightness": 0.1,
+      "contrast": 0.94,
+      "saturation": 1.2,
+      "blur": 0,
+      "hue": 4,
+      "vignette": 0
+    },
+    "crisp-clean": {
+      "brightness": 0.02,
+      "contrast": 1.14,
+      "saturation": 1.06,
+      "blur": 0,
+      "hue": 0,
+      "vignette": 0
+    },
+    "deep-contrast": {
+      "brightness": -0.05,
+      "contrast": 1.42,
+      "saturation": 1.08,
+      "blur": 0,
+      "hue": 0,
+      "vignette": 0.2
+    },
+    "muted-earth": {
+      "brightness": 0,
+      "contrast": 1.04,
+      "saturation": 0.72,
+      "blur": 0,
+      "hue": 10,
+      "vignette": 0.16
+    },
+    "rose-tint": {
+      "brightness": 0.06,
+      "contrast": 1.02,
+      "saturation": 1.14,
+      "blur": 0,
+      "hue": 16,
+      "vignette": 0.1
+    },
+    "mint-fresh": {
+      "brightness": 0.05,
+      "contrast": 1.04,
+      "saturation": 1.1,
+      "blur": 0,
+      "hue": -24,
+      "vignette": 0
+    },
+    "amber-warm": {
+      "brightness": 0.04,
+      "contrast": 1.1,
+      "saturation": 1.16,
+      "blur": 0,
+      "hue": 18,
+      "vignette": 0.14
+    },
+    "steel-cool": {
+      "brightness": -0.03,
+      "contrast": 1.18,
+      "saturation": 0.84,
+      "blur": 0,
+      "hue": -14,
+      "vignette": 0.2
+    },
+    "sepia-classic": {
+      "brightness": 0.04,
+      "contrast": 1.0,
+      "saturation": 0.34,
+      "blur": 0,
+      "hue": 22,
+      "vignette": 0.26
+    },
+    "bleach-bypass": {
+      "brightness": 0.02,
+      "contrast": 1.46,
+      "saturation": 0.5,
+      "blur": 0,
+      "hue": 0,
+      "vignette": 0.24
+    },
+    "moody-dark": {
+      "brightness": -0.14,
+      "contrast": 1.26,
+      "saturation": 0.94,
+      "blur": 0,
+      "hue": -8,
+      "vignette": 0.42
+    },
+    "bright-airy": {
+      "brightness": 0.16,
+      "contrast": 0.9,
+      "saturation": 1.02,
+      "blur": 0,
+      "hue": 2,
+      "vignette": 0
+    },
+    "cinema-teal": {
+      "brightness": -0.03,
+      "contrast": 1.2,
+      "saturation": 0.96,
+      "blur": 0,
+      "hue": -20,
+      "vignette": 0.28
+    },
+    "retro-vhs": {
+      "brightness": 0.05,
+      "contrast": 0.92,
+      "saturation": 1.3,
+      "blur": 0,
+      "hue": -12,
+      "vignette": 0.3
+    }
+  },
+  "effectLibrary": [
+    {
+      "id": "neon-pulse",
+      "title": "Neon Pulse",
+      "category": "Trending",
+      "detail": "Animated contrast and neon color beat",
+      "swatch": "neon",
+      "duration": 3
+    },
+    {
+      "id": "flash-strobe",
+      "title": "Flash Strobe",
+      "category": "Trending",
+      "detail": "Fast rhythmic highlight flashes",
+      "swatch": "pearl",
+      "duration": 2
+    },
+    {
+      "id": "rgb-wave",
+      "title": "RGB Wave",
+      "category": "Gaming",
+      "detail": "Animated hue sweep and saturation wave",
+      "swatch": "violet",
+      "duration": 4
+    },
+    {
+      "id": "focus-beat",
+      "title": "Focus Beat",
+      "category": "Gaming",
+      "detail": "Pulsing soft focus on the beat",
+      "swatch": "dream",
+      "duration": 3
+    },
+    {
+      "id": "mono-flicker",
+      "title": "Mono Flicker",
+      "category": "Classic",
+      "detail": "Alternating color and monochrome frames",
+      "swatch": "mono",
+      "duration": 3
+    },
+    {
+      "id": "warm-flicker",
+      "title": "Warm Flicker",
+      "category": "Classic",
+      "detail": "Animated warm exposure shimmer",
+      "swatch": "retro",
+      "duration": 4
+    },
+    {
+      "id": "nightclub",
+      "title": "Nightclub",
+      "category": "Party",
+      "detail": "Fast saturated nightclub color cycling",
+      "swatch": "night",
+      "duration": 4
+    },
+    {
+      "id": "vignette-pulse",
+      "title": "Vignette Pulse",
+      "category": "Focus",
+      "detail": "Animated edge-darkening focus pulse",
+      "swatch": "cinema",
+      "duration": 3
+    },
+    {
+      "id": "sparkle-burst",
+      "title": "Sparkle Burst",
+      "category": "Trending",
+      "detail": "Twinkling white sparkle bursts",
+      "swatch": "sparkle",
+      "duration": 3
+    },
+    {
+      "id": "particle-rain",
+      "title": "Particle Rain",
+      "category": "Trending",
+      "detail": "Falling luminous particle field",
+      "swatch": "particles",
+      "duration": 4
+    },
+    {
+      "id": "negative-flash",
+      "title": "Negative Flash",
+      "category": "Gaming",
+      "detail": "Rhythmic inverted-color flashes",
+      "swatch": "negative",
+      "duration": 2.5
+    },
+    {
+      "id": "bw-flash",
+      "title": "B&W Flash",
+      "category": "Classic",
+      "detail": "Beat-synced black-and-white flashes",
+      "swatch": "mono",
+      "duration": 3
+    },
+    {
+      "id": "camera-shake",
+      "title": "Camera Shake",
+      "category": "Motion",
+      "detail": "Fast handheld impact movement",
+      "swatch": "shake",
+      "duration": 2.5
+    },
+    {
+      "id": "zoom-pulse",
+      "title": "Zoom Pulse",
+      "category": "Motion",
+      "detail": "Animated push-in and pull-back pulse",
+      "swatch": "zoom",
+      "duration": 3
+    },
+    {
+      "id": "glitch-scan",
+      "title": "Glitch Scan",
+      "category": "Gaming",
+      "detail": "Flickering digital color distortion",
+      "swatch": "glitch",
+      "duration": 3
+    },
+    {
+      "id": "strobe-hard",
+      "title": "Hard Strobe",
+      "category": "Party",
+      "detail": "Aggressive white strobe hits",
+      "swatch": "glitch",
+      "duration": 2
+    },
+    {
+      "id": "pulse-white",
+      "title": "White Pulse",
+      "category": "Party",
+      "detail": "Soft white bloom on the beat",
+      "swatch": "pearl",
+      "duration": 2
+    },
+    {
+      "id": "beat-punch",
+      "title": "Beat Punch",
+      "category": "Motion",
+      "detail": "Zoom and brightness punch",
+      "swatch": "zoom",
+      "duration": 2
+    },
+    {
+      "id": "bass-drop",
+      "title": "Bass Drop",
+      "category": "Motion",
+      "detail": "Heavy zoom with a dark slam",
+      "swatch": "night",
+      "duration": 2.5
+    },
+    {
+      "id": "chroma-shift",
+      "title": "Chroma Shift",
+      "category": "Trending",
+      "detail": "Sliding colour separation",
+      "swatch": "negative",
+      "duration": 2.5
+    },
+    {
+      "id": "duotone-wave",
+      "title": "Duotone Wave",
+      "category": "Classic",
+      "detail": "Two-tone colour sweep",
+      "swatch": "cinema",
+      "duration": 3
+    },
+    {
+      "id": "heat-wave",
+      "title": "Heat Wave",
+      "category": "Classic",
+      "detail": "Warm colour pump",
+      "swatch": "retro",
+      "duration": 3
+    },
+    {
+      "id": "ice-wave",
+      "title": "Ice Wave",
+      "category": "Classic",
+      "detail": "Cool colour pump",
+      "swatch": "cold",
+      "duration": 3
+    },
+    {
+      "id": "rainbow-cycle",
+      "title": "Rainbow Cycle",
+      "category": "Party",
+      "detail": "Full spectrum colour cycle",
+      "swatch": "negative",
+      "duration": 3
+    },
+    {
+      "id": "saturation-surge",
+      "title": "Saturation Surge",
+      "category": "Trending",
+      "detail": "Colour intensity swell",
+      "swatch": "dream",
+      "duration": 2.5
+    },
+    {
+      "id": "contrast-slam",
+      "title": "Contrast Slam",
+      "category": "Gaming",
+      "detail": "Punchy contrast hits",
+      "swatch": "mono",
+      "duration": 2
+    },
+    {
+      "id": "shake-hard",
+      "title": "Hard Shake",
+      "category": "Motion",
+      "detail": "Aggressive camera shake",
+      "swatch": "shake",
+      "duration": 2
+    },
+    {
+      "id": "zoom-bounce",
+      "title": "Zoom Bounce",
+      "category": "Motion",
+      "detail": "Rapid springy zoom",
+      "swatch": "zoom",
+      "duration": 2
+    },
+    {
+      "id": "drift-pan",
+      "title": "Drift Pan",
+      "category": "Focus",
+      "detail": "Slow drifting tilt",
+      "swatch": "cinema",
+      "duration": 4
+    },
+    {
+      "id": "spin-tease",
+      "title": "Spin Tease",
+      "category": "Motion",
+      "detail": "Continuous gentle rotation",
+      "swatch": "shake",
+      "duration": 3
+    },
+    {
+      "id": "vhs-noise",
+      "title": "VHS Noise",
+      "category": "Classic",
+      "detail": "Tape grain with colour bleed",
+      "swatch": "retro",
+      "duration": 3
+    },
+    {
+      "id": "static-burst",
+      "title": "Static Burst",
+      "category": "Gaming",
+      "detail": "Bursts of heavy static",
+      "swatch": "glitch",
+      "duration": 2
+    },
+    {
+      "id": "scanline-drift",
+      "title": "Scanline Drift",
+      "category": "Gaming",
+      "detail": "Rolling CRT scanlines",
+      "swatch": "glitch",
+      "duration": 3
+    },
+    {
+      "id": "film-flicker",
+      "title": "Film Flicker",
+      "category": "Classic",
+      "detail": "Projector flicker and grain",
+      "swatch": "retro",
+      "duration": 3
+    },
+    {
+      "id": "soft-focus-pulse",
+      "title": "Soft Focus Pulse",
+      "category": "Focus",
+      "detail": "Breathing soft focus",
+      "swatch": "dream",
+      "duration": 3
+    },
+    {
+      "id": "edge-glow",
+      "title": "Edge Glow",
+      "category": "Trending",
+      "detail": "Glowing vignette pulse",
+      "swatch": "neon",
+      "duration": 3
+    }
+  ],
+  "filterLibrary": [
+    {
+      "id": "cream",
+      "title": "Cream",
+      "category": "Featured",
+      "detail": "Warm softened highlights",
+      "swatch": "cream"
+    },
+    {
+      "id": "cold-thrill",
+      "title": "Cold Thrill",
+      "category": "Hits",
+      "detail": "Cool, sharper atmosphere",
+      "swatch": "cold"
+    },
+    {
+      "id": "bronze-film",
+      "title": "Bronze Film",
+      "category": "Hits",
+      "detail": "Bronze cinematic tint",
+      "swatch": "bronze"
+    },
+    {
+      "id": "nature",
+      "title": "Nature",
+      "category": "Life",
+      "detail": "Fresh green saturation",
+      "swatch": "nature"
+    },
+    {
+      "id": "soft-blush",
+      "title": "Soft Blush",
+      "category": "Summer",
+      "detail": "Rosy bright portrait finish",
+      "swatch": "blush"
+    },
+    {
+      "id": "sunny-pearl",
+      "title": "Sunny Pearl",
+      "category": "Summer",
+      "detail": "Bright sunlit color",
+      "swatch": "sunny"
+    },
+    {
+      "id": "film-fade",
+      "title": "Film Fade",
+      "category": "CCD",
+      "detail": "Lower-contrast film wash",
+      "swatch": "fade"
+    },
+    {
+      "id": "noir",
+      "title": "Noir",
+      "category": "Photo Booth",
+      "detail": "Deep black-and-white finish",
+      "swatch": "noir"
+    },
+    {
+      "id": "warm-glow",
+      "title": "Warm Glow",
+      "category": "Life",
+      "detail": "Gentle warm lift",
+      "swatch": "cream"
+    },
+    {
+      "id": "cool-mist",
+      "title": "Cool Mist",
+      "category": "Life",
+      "detail": "Airy cool haze",
+      "swatch": "cold"
+    },
+    {
+      "id": "teal-orange",
+      "title": "Teal & Orange",
+      "category": "Featured",
+      "detail": "Blockbuster grade",
+      "swatch": "cinema"
+    },
+    {
+      "id": "vintage-fade",
+      "title": "Vintage Fade",
+      "category": "CCD",
+      "detail": "Washed retro film",
+      "swatch": "retro"
+    },
+    {
+      "id": "high-key",
+      "title": "High Key",
+      "category": "Photo Booth",
+      "detail": "Bright and clean",
+      "swatch": "pearl"
+    },
+    {
+      "id": "low-key",
+      "title": "Low Key",
+      "category": "Photo Booth",
+      "detail": "Dark and moody",
+      "swatch": "noir"
+    },
+    {
+      "id": "matte-black",
+      "title": "Matte Black",
+      "category": "Featured",
+      "detail": "Lifted blacks, flat contrast",
+      "swatch": "mono"
+    },
+    {
+      "id": "golden-hour",
+      "title": "Golden Hour",
+      "category": "Summer",
+      "detail": "Late sun warmth",
+      "swatch": "cream"
+    },
+    {
+      "id": "blue-hour",
+      "title": "Blue Hour",
+      "category": "Summer",
+      "detail": "Dusk blue cast",
+      "swatch": "cold"
+    },
+    {
+      "id": "neon-city",
+      "title": "Neon City",
+      "category": "Hits",
+      "detail": "Saturated night neon",
+      "swatch": "neon"
+    },
+    {
+      "id": "pastel-pop",
+      "title": "Pastel Pop",
+      "category": "Hits",
+      "detail": "Soft pastel colour",
+      "swatch": "dream"
+    },
+    {
+      "id": "crisp-clean",
+      "title": "Crisp Clean",
+      "category": "Featured",
+      "detail": "Neutral and sharp",
+      "swatch": "pearl"
+    },
+    {
+      "id": "deep-contrast",
+      "title": "Deep Contrast",
+      "category": "Hits",
+      "detail": "Hard punchy contrast",
+      "swatch": "mono"
+    },
+    {
+      "id": "muted-earth",
+      "title": "Muted Earth",
+      "category": "Life",
+      "detail": "Earthy desaturated tone",
+      "swatch": "bronze"
+    },
+    {
+      "id": "rose-tint",
+      "title": "Rose Tint",
+      "category": "Photo Booth",
+      "detail": "Warm rose cast",
+      "swatch": "dream"
+    },
+    {
+      "id": "mint-fresh",
+      "title": "Mint Fresh",
+      "category": "Summer",
+      "detail": "Cool mint highlights",
+      "swatch": "cold"
+    },
+    {
+      "id": "amber-warm",
+      "title": "Amber Warm",
+      "category": "CCD",
+      "detail": "Amber tungsten look",
+      "swatch": "retro"
+    },
+    {
+      "id": "steel-cool",
+      "title": "Steel Cool",
+      "category": "CCD",
+      "detail": "Cold steel grade",
+      "swatch": "cinema"
+    },
+    {
+      "id": "sepia-classic",
+      "title": "Sepia Classic",
+      "category": "CCD",
+      "detail": "Classic sepia wash",
+      "swatch": "bronze"
+    },
+    {
+      "id": "bleach-bypass",
+      "title": "Bleach Bypass",
+      "category": "Featured",
+      "detail": "Harsh desaturated contrast",
+      "swatch": "mono"
+    },
+    {
+      "id": "moody-dark",
+      "title": "Moody Dark",
+      "category": "Hits",
+      "detail": "Heavy shadow mood",
+      "swatch": "night"
+    },
+    {
+      "id": "bright-airy",
+      "title": "Bright & Airy",
+      "category": "Life",
+      "detail": "Light open highlights",
+      "swatch": "pearl"
+    },
+    {
+      "id": "cinema-teal",
+      "title": "Cinema Teal",
+      "category": "Featured",
+      "detail": "Cold cinematic teal",
+      "swatch": "cinema"
+    },
+    {
+      "id": "retro-vhs",
+      "title": "Retro VHS",
+      "category": "CCD",
+      "detail": "Tape colour bleed",
+      "swatch": "glitch"
+    }
+  ],
+  "transitionLibrary": [
+    {
+      "id": "crossfade",
+      "title": "Dissolve",
+      "detail": "Blends both clips over the selected duration",
+      "swatch": "dissolve"
+    },
+    {
+      "id": "dip-black",
+      "title": "Dip to Black",
+      "detail": "Fades out, then brings the next clip up from black",
+      "swatch": "black"
+    },
+    {
+      "id": "slide-left",
+      "title": "Slide Left",
+      "detail": "The next clip slides in from the right",
+      "swatch": "left"
+    },
+    {
+      "id": "slide-right",
+      "title": "Slide Right",
+      "detail": "The next clip slides in from the left",
+      "swatch": "right"
+    }
+  ],
+  "defaultOverlay": {
+    "opacity": 0.9,
+    "scale": 0.28,
+    "position": "bottom-right"
+  },
+  "positions": [
+    "top-left",
+    "top-center",
+    "top-right",
+    "center-left",
+    "center",
+    "center-right",
+    "bottom-left",
+    "bottom-center",
+    "bottom-right"
+  ],
+  "transitionTypes": [
+    "none",
+    "crossfade",
+    "dip-black",
+    "slide-left",
+    "slide-right"
+  ]
+}

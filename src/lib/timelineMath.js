@@ -22,17 +22,58 @@ export function clipAtTime(clips,time){
     .find(clip=>clipContainsTime(clip,time))||null;
 }
 
-export function magneticStartForClips(candidate,movingClip,trackClips,snapEnabled,pxPerSec){
+/** Pixels of pointer travel within which an edge grabs. Generous on purpose:
+ *  effect clips are synced to beats by eye, so the grab must feel magnetic. */
+export const SNAP_PIXELS=14;
+
+/**
+ * Collect every timeline position an edge should lock onto: the start and end
+ * of each clip on the given tracks, plus any explicit positions (the playhead,
+ * zero, the project end). Positions are de-duplicated so a boundary shared by
+ * two adjacent clips does not out-vote a nearby one.
+ */
+export function collectSnapTargets({tracks=[],extra=[],excludeId=null}={}){
+  const targets=new Set([0]);
+  for(const clips of tracks){
+    for(const clip of clips||[]){
+      if(!clip||clip.id===excludeId)continue;
+      const start=clipStart(clip);
+      targets.add(Math.round(start*1000)/1000);
+      targets.add(Math.round((start+clipDuration(clip))*1000)/1000);
+    }
+  }
+  for(const value of extra){
+    const t=Number(value);
+    if(Number.isFinite(t)&&t>=0)targets.add(Math.round(t*1000)/1000);
+  }
+  return [...targets].sort((a,b)=>a-b);
+}
+
+/**
+ * Snap a single edge position to the nearest target inside the threshold.
+ * Returns the resolved value plus the target it locked onto, so the caller can
+ * draw a guide showing the user exactly what the edge is aligned to.
+ */
+export function snapEdge(value,targets,thresholdSec){
+  const v=Number(value)||0;
+  let best=v,bestDist=Infinity,snappedTo=null;
+  for(const t of targets||[]){
+    const dist=Math.abs(v-t);
+    if(dist<thresholdSec&&dist<bestDist){best=t;bestDist=dist;snappedTo=t}
+  }
+  return {value:Math.round(best*1000)/1000,snappedTo};
+}
+
+export function magneticStartForClips(candidate,movingClip,trackClips,snapEnabled,pxPerSec,extraTargets=[]){
   let value=Math.max(0,Number(candidate)||0);
   if(!snapEnabled)return value;
-  const thresholdSec=14/Math.max(1,Number(pxPerSec)||1);
+  const thresholdSec=SNAP_PIXELS/Math.max(1,Number(pxPerSec)||1);
   const dur=clipDuration(movingClip);
-  const targets=[0];
-  for(const other of trackClips||[]){
-    if(other.id===movingClip.id)continue;
-    targets.push(Number(other.start)||0);
-    targets.push((Number(other.start)||0)+clipDuration(other));
-  }
+  const targets=collectSnapTargets({
+    tracks:[trackClips],
+    extra:extraTargets,
+    excludeId:movingClip?.id??null
+  });
   let best=value,bestDist=Infinity;
   for(const t of targets){
     const startDist=Math.abs(value-t);
@@ -41,6 +82,12 @@ export function magneticStartForClips(candidate,movingClip,trackClips,snapEnable
     if(endDist<thresholdSec&&endDist<bestDist){best=t-dur;bestDist=endDist}
   }
   return Math.max(0,Math.round(best*1000)/1000);
+}
+
+export function timelineStartFromPointer(pointerX,laneLeft,pxPerSec,pointerOffsetSec=0){
+  const scale=Math.max(1,Number(pxPerSec)||1);
+  const position=(Number(pointerX)||0)-(Number(laneLeft)||0);
+  return Math.max(0,position/scale-(Number(pointerOffsetSec)||0));
 }
 
 export function trimLeftByDelta(clip,deltaTimelineSeconds){

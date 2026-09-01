@@ -3,7 +3,8 @@ const fs=require('fs');
 const os=require('os');
 const path=require('path');
 const {spawnSync}=require('child_process');
-const {exportProject,extractAudio,probe}=require('../electron/exporter.cjs');
+const assert=require('assert');
+const {exportProject,extractAudio,probe,buildExportArgs}=require('../electron/exporter.cjs');
 const {normalizeWatermark}=require('../electron/branding.cjs');
 
 function resolveBins(){
@@ -30,6 +31,9 @@ function rawFrame(bin,input){
   const c2=path.join(dir,'clip2.mp4');
   const extra=path.join(dir,'extra.m4a');
   const out=path.join(dir,'out.mp4');
+  const visualOutput=path.join(dir,'visual-out.mp4');
+  const slideOutput=path.join(dir,'slide-out.mp4');
+  const freezeOutput=path.join(dir,'freeze-out.mp4');
   const watermarkInput=path.join(dir,'watermark-input.mp4');
   const watermarkOutput=path.join(dir,'watermark-out.mp4');
   const extracted=path.join(dir,'extracted.m4a');
@@ -64,6 +68,62 @@ function rawFrame(bin,input){
   const hasA=info.streams?.some(s=>s.codec_type==='audio');
   if(!hasV||!hasA||dur<4.8)throw new Error(`Smoke export verification failed: duration=${dur}, video=${hasV}, audio=${hasA}`);
 
+  const visualProject={
+    videoClips:[
+      {name:'c1',path:c1,start:0,trimStart:0,trimEnd:2,speed:1,volume:1,transitionOut:'crossfade',transitionDuration:.5,transitionIn:0,visual:{brightness:.02,contrast:1.1,saturation:1.2,blur:0,hue:4,vignette:.15,zoom:1.35,panX:.5,panY:-.25}},
+      {name:'c2',path:c2,start:1.5,trimStart:0,trimEnd:2,speed:1,volume:1,transitionIn:.5,visual:{brightness:0,contrast:1,saturation:1,blur:.2,hue:0,vignette:0}}
+    ],
+    audioClips:[],
+    overlayClips:[{name:'emx-overlay',path:watermarkAsset,start:.4,trimStart:0,trimEnd:1.4,speed:1,opacity:.9,scale:.28,position:'top-left',visual:{brightness:0,contrast:1,saturation:1,blur:0,hue:0,vignette:0}}],
+    effectClips:['neon-pulse','flash-strobe','rgb-wave','focus-beat','mono-flicker','warm-flicker','nightclub','vignette-pulse'].map((effectId,index)=>({
+      id:`effect-${index}`,effectId,name:effectId,start:.25,trimStart:0,trimEnd:2.5,speed:1
+    })),
+    effects:{brightness:0,contrast:1,saturation:1,blur:0},
+    branding:{...normalizeWatermark({opacity:.75,position:'bottom-right'}),assetPath:watermarkAsset},
+    export:{width:640,height:360,fps:30,crf:25,preset:'ultrafast'}
+  };
+  const visualGraph=buildExportArgs(visualProject,new Map([[c1,{streams:[{codec_type:'audio'}]}],[c2,{streams:[{codec_type:'audio'}]}]]),visualOutput).filterGraph;
+  assert.ok(visualGraph.includes('overlayComp0'),'Visual export graph must contain the timed image overlay compositor.');
+  assert.ok(visualGraph.includes("iw*1.350000")&&visualGraph.includes("1+0.500000")&&visualGraph.includes("1+-0.250000"),'Visual export graph must bake per-clip zoom and pan into the video framing chain.');
+  assert.ok(visualGraph.includes('effectComp7')&&visualGraph.includes("between(t,0.250000,2.750000)"),'Visual export graph must contain every timed animated effect compositor.');
+  assert.ok(visualGraph.includes('fade=t=in')&&visualGraph.includes('fade=t=out'),'Visual export graph must contain a real alpha cross fade.');
+  await exportProject({ffmpegPath:ffmpeg,ffprobePath:ffprobe,outputPath:visualOutput,project:visualProject});
+  const visualInfo=await probe(ffprobe,visualOutput);
+  const visualDuration=Number(visualInfo.format?.duration||0);
+  if(!visualInfo.streams?.some(stream=>stream.codec_type==='video')||visualDuration<3.3){
+    throw new Error(`Visual export verification failed: duration=${visualDuration}`);
+  }
+
+  const slideProject={
+    ...visualProject,
+    videoClips:[
+      {...visualProject.videoClips[0],transitionOut:'slide-left',transitionDuration:.5},
+      {...visualProject.videoClips[1],transitionIn:.5,transitionInStyle:'slide-left'}
+    ],
+    overlayClips:[]
+  };
+  const slideGraph=buildExportArgs(slideProject,new Map([[c1,{streams:[{codec_type:'audio'}]}],[c2,{streams:[{codec_type:'audio'}]}]]),slideOutput).filterGraph;
+  assert.ok(slideGraph.includes('overlay=x=if(lt(t\\,'),'Slide export graph must animate an incoming clip position.');
+  await exportProject({ffmpegPath:ffmpeg,ffprobePath:ffprobe,outputPath:slideOutput,project:slideProject});
+  const slideInfo=await probe(ffprobe,slideOutput);
+  if(!slideInfo.streams?.some(stream=>stream.codec_type==='video')||Number(slideInfo.format?.duration||0)<3.3){
+    throw new Error('Slide transition export verification failed.');
+  }
+
+  await exportProject({
+    ffmpegPath:ffmpeg,ffprobePath:ffprobe,outputPath:freezeOutput,
+    project:{
+      videoClips:[{name:'freeze',path:c1,start:0,trimStart:0,trimEnd:1.25,speed:1,volume:0,isFreeze:true,freezeSourceTime:.7}],
+      audioClips:[],overlayClips:[],effectClips:[],effects:{brightness:0,contrast:1,saturation:1,blur:0},
+      branding:{...normalizeWatermark({opacity:.75,position:'bottom-right'}),assetPath:watermarkAsset},
+      export:{width:360,height:640,fit:'cover',fps:30,crf:25,preset:'ultrafast'}
+    }
+  });
+  const freezeInfo=await probe(ffprobe,freezeOutput);
+  if(!freezeInfo.streams?.some(stream=>stream.codec_type==='video')||Number(freezeInfo.format?.duration||0)<1.2){
+    throw new Error('Freeze-frame export verification failed.');
+  }
+
   await exportProject({
     ffmpegPath:ffmpeg,ffprobePath:ffprobe,outputPath:watermarkOutput,
     project:{
@@ -81,6 +141,9 @@ function rawFrame(bin,input){
   if(visiblePixels<150)throw new Error(`Permanent watermark frame verification failed: only ${visiblePixels} non-black pixels.`);
   console.log('EMX NATIVE ENGINE SMOKE TEST: PASS');
   console.log(`Output duration: ${dur.toFixed(2)}s`);
+  console.log(`Visual overlay + cross-fade output duration: ${visualDuration.toFixed(2)}s`);
+  console.log(`Slide transition output: ${slideOutput}`);
+  console.log(`Freeze-frame vertical output: ${freezeOutput}`);
   console.log(`Permanent watermark frame pixels: ${visiblePixels}`);
   console.log(`Output: ${out}`);
 })().catch(err=>{console.error(err);process.exit(1)});

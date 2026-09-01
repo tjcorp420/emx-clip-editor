@@ -1,5 +1,5 @@
 @echo off
-title EMX Clip Studio V1.8.2 Verification
+title EMX Clip Studio V1.11.4 Verification
 cd /d "%~dp0"
 
 where npm >nul 2>nul
@@ -16,58 +16,83 @@ if not exist node_modules (
 )
 
 echo.
-echo [1/10] Preparing native FFmpeg binaries...
+echo [1/15] Preparing native FFmpeg binaries...
 call npm run prepare:native
 if errorlevel 1 goto :fail
 
 echo.
-echo [2/10] JavaScript syntax checks...
+echo [2/15] JavaScript syntax checks...
 call npm run check:js
 if errorlevel 1 goto :fail
 
 echo.
-echo [3/10] Timeline drag / trim / split math test...
+echo [3/15] Timeline drag / trim / split math test...
 call npm run verify:timeline
 if errorlevel 1 goto :fail
 
 echo.
-echo [4/10] UI contract test: Undo Last, media workspace, watermark, update center, friend-ready AI controls...
+echo [4/15] Resources / timeline playback ownership regression...
+call npm run verify:playback
+if errorlevel 1 goto :fail
+
+echo.
+echo [5/15] Scrub-session and delayed audio regression...
+call npm run verify:scrub
+if errorlevel 1 goto :fail
+
+echo.
+echo [6/15] All 15 animated FFmpeg effect chains...
+call npm run verify:effects
+if errorlevel 1 goto :fail
+
+echo.
+echo [7/15] Dedicated export folder and completion actions...
+call npm run verify:export-paths
+if errorlevel 1 goto :fail
+
+echo.
+echo [8/15] UI contract test: Undo Last, media workspace, watermark, update center, friend-ready AI controls...
 call npm run verify:ui
 if errorlevel 1 goto :fail
 
 echo.
-echo [5/10] Permanent watermark contract test...
+echo [9/15] Permanent watermark contract test...
 call npm run verify:watermark
 if errorlevel 1 goto :fail
 
 echo.
-echo [6/10] Update service contract test...
+echo [10/15] Update service contract test...
 call npm run verify:update
 if errorlevel 1 goto :fail
 
 echo.
-echo [7/10] Audio AI integration contract test...
+echo [11/15] Audio AI integration contract test...
 call npm run verify:ai-contract
 if errorlevel 1 goto :fail
 
 echo.
-echo [8/10] Friend-ready runtime contract test...
+echo [12/15] Friend-ready runtime contract test...
 call npm run verify:friend-runtime-contract
 if errorlevel 1 goto :fail
 
 echo.
-echo [9/10] Native extraction / export / watermark smoke test...
+echo [13/15] Native extraction / export / visual zoom-pan / watermark smoke test...
 call npm run verify:engine
 if errorlevel 1 goto :fail
 
 echo.
-echo [10/10] Vite production build...
-call npm run build:web
+echo [14/15] Desktop media protocol test...
+call npm run verify:desktop-media
+if errorlevel 1 goto :fail
+
+echo.
+echo [15/15] Vite production build and hidden renderer runtime test...
+call npm run verify:renderer
 if errorlevel 1 goto :fail
 
 echo.
 echo ==========================================
-echo EMX CLIP STUDIO V1.8.2 VERIFICATION PASS
+echo EMX CLIP STUDIO V1.11.4 VERIFICATION PASS
 echo ==========================================
 echo.
 echo Friend-ready Audio AI behavior:
@@ -82,7 +107,7 @@ exit /b 0
 :fail
 echo.
 echo ==========================================
-echo EMX V1.8.2 VERIFICATION FAILED
+echo EMX V1.11.4 VERIFICATION FAILED
 echo Read the first error above before building.
 echo ==========================================
 pause

@@ -9,6 +9,7 @@ const { setupAudioAI, aiStatus, processAudioAI } = require('./audio-ai.cjs');
 const { cliReady } = require('./ai-runtime.cjs');
 const { normalizeWatermark, watermarkAssetPath } = require('./branding.cjs');
 const { EmxUpdateService } = require('./updater.cjs');
+const { defaultExportPath, exportDirectory } = require('./export-paths.cjs');
 
 let mainWindow;
 let updateService;
@@ -18,7 +19,8 @@ const mediaExtensions=new Map([
   ['.mp4','video/mp4'],['.m4v','video/mp4'],['.mov','video/quicktime'],['.mkv','video/x-matroska'],
   ['.avi','video/x-msvideo'],['.webm','video/webm'],['.wmv','video/x-ms-wmv'],
   ['.mp3','audio/mpeg'],['.wav','audio/wav'],['.m4a','audio/mp4'],['.aac','audio/aac'],
-  ['.flac','audio/flac'],['.ogg','audio/ogg'],['.opus','audio/ogg']
+  ['.flac','audio/flac'],['.ogg','audio/ogg'],['.opus','audio/ogg'],
+  ['.png','image/png'],['.jpg','image/jpeg'],['.jpeg','image/jpeg'],['.webp','image/webp'],['.gif','image/gif']
 ]);
 
 protocol.registerSchemesAsPrivileged([{scheme:'emx-media',privileges:{standard:true,secure:true,supportFetchAPI:true,corsEnabled:true,stream:true}}]);
@@ -107,7 +109,9 @@ function createMediaDescriptor(candidate){
   };
 }
 function mediaDialogFilters(){
-  return [{name:'Video and audio',extensions:[...mediaExtensions.keys()].map(ext=>ext.slice(1))}];
+  return [
+    {name:'Video, audio, and image overlays',extensions:[...mediaExtensions.keys()].map(ext=>ext.slice(1))}
+  ];
 }
 
 function createWindow(){
@@ -141,7 +145,12 @@ app.whenReady().then(()=>{
     const mediaToken=decodeURIComponent(new URL(request.url).pathname.replace(/^\/+/,''));
     const mediaPath=mediaTokens.get(mediaToken);
     if(!mediaPath||!supportedMediaPath(mediaPath))return new Response('Media is unavailable.',{status:404});
-    return net.fetch(pathToFileURL(mediaPath).href);
+    const range=request.headers.get('range');
+    return net.fetch(pathToFileURL(mediaPath).href,range?{headers:{Range:range}}:undefined).then(response=>{
+      const headers=new Headers(response.headers);
+      headers.set('Access-Control-Allow-Origin','*');
+      return new Response(response.body,{status:response.status,statusText:response.statusText,headers});
+    });
   });
   createWindow();
   updateService=new EmxUpdateService({
@@ -168,6 +177,17 @@ app.whenReady().then(()=>{
       throw new Error('The requested media file is no longer available on this PC.');
     }
     shell.showItemInFolder(filePath);
+    return {ok:true};
+  });
+
+  ipcMain.handle('emx:open-path',async(_event,filePath)=>{
+    if(typeof filePath!=='string'||!path.isAbsolute(filePath)||!fs.existsSync(filePath)){
+      throw new Error('The requested exported video is no longer available on this PC.');
+    }
+    const media=supportedMediaPath(filePath);
+    if(!media||media.mime!=='video/mp4')throw new Error('Only an exported MP4 can be opened from the export screen.');
+    const error=await shell.openPath(filePath);
+    if(error)throw new Error(error);
     return {ok:true};
   });
 
@@ -233,7 +253,9 @@ app.whenReady().then(()=>{
     if(!payload?.project||typeof payload.project!=='object')throw new Error('A valid export project is required.');
     const bins=binaryPaths();
     const jobId=payload.jobId||crypto.randomUUID();
-    const defaultPath=path.join(app.getPath('videos'),payload.suggestedName||`EMX_Clip_${Date.now()}.mp4`);
+    const outputDirectory=exportDirectory(app.getPath('videos'));
+    fs.mkdirSync(outputDirectory,{recursive:true});
+    const defaultPath=defaultExportPath(app.getPath('videos'),payload.suggestedName);
     const chosen=await dialog.showSaveDialog(mainWindow,{
       title:'Export EMX MP4',
       defaultPath,
@@ -261,7 +283,7 @@ app.whenReady().then(()=>{
       onLog:log=>sendJob(jobId,'log',{log})
     });
     sendJob(jobId,'complete',{message:'MP4 export verified.'});
-    return {ok:true,...result};
+    return {ok:true,...result,outputDirectory:path.dirname(result.outputPath)};
   });
 
 

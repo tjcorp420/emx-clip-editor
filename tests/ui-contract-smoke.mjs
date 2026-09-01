@@ -73,7 +73,46 @@ for (const token of [
   'Set as Default Import Folder',
   '50%–100%'
 ]) {
-  assert.ok(s.includes(token), `V1.8.2 selection/import contract missing ${token}.`);
+  assert.ok(s.includes(token), `V1.9.0 selection/import contract missing ${token}.`);
+}
+
+for (const token of [
+  'id="filterImage"',
+  'id="overlayLane"',
+  'id="addOverlayTrack"',
+  'id="previewOverlayLayer"',
+  'id="previewTransitionVideo"',
+  'id="clipVisualPreset"',
+  'id="transitionOut"',
+  'id="effectLibrary"',
+  'id="filterLibrary"',
+  'id="transitionLibrary"',
+  'Dissolve',
+  'updateOverlayPreview',
+  'configureTransition',
+  'overlayClips:[]'
+]) {
+  assert.ok(s.includes(token), `V1.9 visual editing contract missing ${token}.`);
+}
+
+for (const token of [
+  'effectClips:[]',
+  'id="effectLane"',
+  'application/x-emx-effect-id',
+  'Split at Playhead',
+  'Freeze Frame at Playhead',
+  'Move Clip to Playhead',
+  'timelineTimeFromClientX',
+  'TikTok / Reels 9:16',
+  'id="exportFit"'
+  ,'id="clipZoom"'
+  ,'id="clipPanX"'
+  ,'id="clipPanY"'
+  ,'id="openExportVideo"'
+  ,'id="openExportFolder"'
+  ,'Fit full clip • no surprise cropping'
+]) {
+  assert.ok(s.includes(token), `V1.11 timeline/effects contract missing ${token}.`);
 }
 
 console.log('EMX UI CONTRACT SMOKE TEST: PASS');
